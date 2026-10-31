@@ -262,7 +262,7 @@
   const BREAK_MINUTES = 30;
   const PAID_MINUTES_PER_DAY = SHIFT_MINUTES - BREAK_MINUTES;
   const DAY_OFF = 5; // 0 = Sonntag, 5 = Freitag
-  const CURRENCY = "EUR";
+  const CURRENCY = "USD";
   const TIME_ZONE = "Europe/Berlin"; // Muss zu zeiten_jetzt() in schema.sql passen.
   const LOCALE = "ar-u-nu-latn"; // Arabisch mit denselben Ziffern 0-9 wie der Ziffernblock.
 
@@ -302,7 +302,7 @@
     due: "الراتب المستحق",
     noSalary: "لم يُحدَّد الراتب بعد",
     missingEnd: "أيام بدون تسجيل انصراف ولا تُحتسب ضمن ساعات العمل: ",
-    salaryLabel: "الراتب الشهري (يورو)",
+    salaryLabel: "الراتب الشهري (دولار)",
     save: "حفظ",
     saved: "تم حفظ الراتب.",
     salaryInvalid: "يرجى إدخال مبلغ صحيح.",
@@ -405,7 +405,7 @@
   }
 
   const formatMoney = (amount) =>
-    new Intl.NumberFormat(LOCALE, { style: "currency", currency: CURRENCY }).format(amount);
+    new Intl.NumberFormat(LOCALE, { style: "currency", currency: CURRENCY, currencyDisplay: "narrowSymbol" }).format(amount);
   const formatHours = (minutes) =>
     (minutes / 60).toLocaleString(LOCALE, { maximumFractionDigits: 2 });
   const formatDate = (date) =>
