@@ -1,0 +1,716 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>تسجيل الدوام</title>
+<link rel="icon" href="data:,">
+<style>
+  :root {
+    --bg: #f4f6f8;
+    --card: #ffffff;
+    --text: #1f2933;
+    --muted: #66727f;
+    --line: #e3e8ed;
+    --key: #f1f4f7;
+    --key-active: #dfe5eb;
+    --primary: #007bff;
+    --primary-dark: #0062cc;
+    --danger: #ef4444;
+    --error-bg: #fdecec;
+    --error-text: #b42318;
+    --ok-bg: #e7f6ec;
+    --ok-text: #18794e;
+    --warn-bg: #fff6e0;
+    --warn-text: #8a5a00;
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  body {
+    margin: 0;
+    min-height: 100dvh;
+    padding: 16px;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    background: var(--bg);
+    color: var(--text);
+    font-family: system-ui, -apple-system, "SF Arabic", "Segoe UI", "Noto Sans Arabic", Tahoma, sans-serif;
+    font-size: 16px;
+    line-height: 1.6;
+  }
+  button, input { font: inherit; color: inherit; }
+  button { cursor: pointer; touch-action: manipulation; }
+  button:disabled { cursor: default; opacity: .6; }
+  :focus-visible { outline: 3px solid rgba(0, 123, 255, .45); outline-offset: 2px; }
+
+  .card {
+    width: 100%;
+    max-width: 420px;
+    padding: 24px 20px;
+    background: var(--card);
+    border-radius: 18px;
+    box-shadow: 0 6px 24px rgba(31, 41, 51, .08);
+  }
+  .card.wide { max-width: 640px; }
+  h1 { margin: 0 0 20px; font-size: 1.3rem; line-height: 1.4; text-align: center; }
+  h2 { margin: 24px 0 8px; font-size: 1.05rem; }
+
+  label { display: block; margin-bottom: 4px; font-size: .92rem; font-weight: 600; }
+  input {
+    width: 100%;
+    height: 48px;
+    padding: 0 12px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: #fff;
+  }
+  .field { margin-bottom: 14px; }
+  #username { direction: ltr; text-align: right; }
+  #username:placeholder-shown { direction: rtl; }
+  .pin-wrap { position: relative; }
+  #pin { padding: 0 48px; direction: ltr; text-align: center; letter-spacing: .3em; }
+  #eye {
+    position: absolute;
+    inset-block: 0;
+    inset-inline-end: 0;
+    width: 48px;
+    display: grid;
+    place-items: center;
+    border: 0;
+    background: none;
+    color: var(--muted);
+  }
+  #eye[aria-pressed="false"] .eye-slash { display: none; }
+
+  /* Tastenfelder bleiben auch in Arabisch links-nach-rechts angeordnet. */
+  .numpad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 16px; }
+  .numpad button {
+    height: 52px;
+    border: 0;
+    border-radius: 12px;
+    background: var(--key);
+    font-size: 1.25rem;
+    font-weight: 600;
+  }
+  .numpad button:active { background: var(--key-active); }
+
+  .btn {
+    display: block;
+    width: 100%;
+    min-height: 52px;
+    padding: 8px 14px;
+    border: 0;
+    border-radius: 12px;
+    font-weight: 700;
+    line-height: 1.35;
+  }
+  .btn small { display: block; font-size: .8rem; font-weight: 500; }
+  .btn-primary { background: var(--primary); color: #fff; }
+  .btn-primary:active { background: var(--primary-dark); }
+  .btn-outline { background: #fff; color: var(--primary-dark); box-shadow: inset 0 0 0 2px var(--primary); }
+  .btn-danger { margin-top: 24px; background: var(--danger); color: #fff; }
+  .stack { display: grid; gap: 10px; }
+  .footer { margin: 16px 0 0; color: var(--muted); font-size: .78rem; text-align: center; }
+
+  .msg { margin: 0 0 14px; padding: 10px 12px; border-radius: 10px; font-size: .92rem; }
+  .msg:empty { display: none; }
+  .msg.error { background: var(--error-bg); color: var(--error-text); }
+  .msg.ok { background: var(--ok-bg); color: var(--ok-text); }
+  .msg.warn { background: var(--warn-bg); color: var(--warn-text); }
+  #stamp-msg { margin: 12px 0 0; }
+
+  .month-nav { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 20px; }
+  .month-nav button {
+    width: 44px;
+    height: 44px;
+    border: 0;
+    border-radius: 12px;
+    background: var(--key);
+    font-size: 1.1rem;
+  }
+  #month-label { font-weight: 700; text-align: center; }
+
+  .stats { margin: 12px 0 0; padding: 4px 14px; border-radius: 12px; background: var(--bg); }
+  .stats div { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; border-top: 1px solid var(--line); }
+  .stats div:first-child { border-top: 0; }
+  .stats dt { color: var(--muted); }
+  .stats dd { margin: 0; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .stats .due dd { color: var(--primary-dark); font-size: 1.1rem; }
+  .stats + .msg { margin-top: 10px; }
+
+  table { width: 100%; border-collapse: collapse; font-size: .92rem; }
+  th { padding: 8px 4px; color: var(--muted); font-size: .82rem; font-weight: 600; text-align: start; }
+  td { padding: 10px 4px; border-top: 1px solid var(--line); font-variant-numeric: tabular-nums; }
+  th:not(:first-child), td:not(:first-child) { width: 64px; }
+  .empty { margin: 12px 0 0; color: var(--muted); text-align: center; }
+  #status { margin: 16px 0 0; color: var(--muted); text-align: center; }
+  #retry { margin-top: 8px; }
+
+  details { margin-top: 10px; border: 1px solid var(--line); border-radius: 12px; }
+  summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; cursor: pointer; list-style: none; }
+  summary::-webkit-details-marker { display: none; }
+  summary b { overflow-wrap: anywhere; }
+  summary .amount { flex: none; color: var(--primary-dark); font-weight: 700; }
+  .detail-body { padding: 0 14px 14px; }
+  .salary-form { display: flex; align-items: flex-end; gap: 8px; margin-top: 14px; }
+  .salary-form > div { flex: 1; min-width: 0; }
+  .salary-form input { direction: ltr; text-align: right; }
+  .salary-form .btn { width: auto; min-height: 48px; }
+  .salary-msg { margin: 10px 0 0; }
+</style>
+</head>
+<body>
+
+<main class="card" id="login-view">
+  <h1>تسجيل الدوام - تسجيل الدخول</h1>
+  <form id="login-form" novalidate>
+    <p class="msg error" id="login-msg" role="alert"></p>
+    <div class="field">
+      <label for="username">اسم المستخدم</label>
+      <input id="username" type="text" placeholder="مثال: ahmed" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false">
+    </div>
+    <div class="field">
+      <label for="pin">الرمز السري (6 أرقام)</label>
+      <div class="pin-wrap">
+        <!-- inputmode="none": Lässt die Handy-Tastatur zu, damit nur der Ziffernblock sichtbar ist. -->
+        <input id="pin" type="password" maxlength="6" inputmode="none" autocomplete="new-password">
+        <button id="eye" type="button" aria-pressed="false" aria-label="إظهار الرمز السري">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7z"/>
+            <circle cx="12" cy="12" r="3"/>
+            <path class="eye-slash" d="M4 4l16 16"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+    <div class="numpad" id="numpad" dir="ltr">
+      <button type="button" data-key="1">1</button>
+      <button type="button" data-key="2">2</button>
+      <button type="button" data-key="3">3</button>
+      <button type="button" data-key="4">4</button>
+      <button type="button" data-key="5">5</button>
+      <button type="button" data-key="6">6</button>
+      <button type="button" data-key="7">7</button>
+      <button type="button" data-key="8">8</button>
+      <button type="button" data-key="9">9</button>
+      <span></span>
+      <button type="button" data-key="0">0</button>
+      <button type="button" data-key="del" aria-label="حذف">⌫</button>
+    </div>
+    <button class="btn btn-primary" id="login-btn" type="submit">تسجيل الدخول</button>
+  </form>
+  <p class="footer">مدعوم بحماية Supabase</p>
+</main>
+
+<main class="card" id="app-view" hidden>
+  <h1 id="greeting"></h1>
+
+  <section id="stamp" hidden>
+    <div class="stack">
+      <button class="btn btn-primary" id="clock-in" type="button">حضور<small>تسجيل وقت البدء</small></button>
+      <button class="btn btn-outline" id="clock-out" type="button">انصراف<small>تسجيل وقت الانتهاء لهذا اليوم</small></button>
+    </div>
+    <p class="msg" id="stamp-msg" role="status"></p>
+  </section>
+
+  <div class="month-nav">
+    <button id="prev-month" type="button" aria-label="الشهر السابق">→</button>
+    <span id="month-label" aria-live="polite"></span>
+    <button id="next-month" type="button" aria-label="الشهر التالي">←</button>
+  </div>
+
+  <p id="status" role="status" hidden></p>
+  <button class="btn btn-outline" id="retry" type="button" hidden>إعادة المحاولة</button>
+  <div id="content"></div>
+
+  <button class="btn btn-danger" id="logout" type="button">تسجيل الخروج</button>
+</main>
+
+<!-- Entspricht @supabase/supabase-js@2, aber auf eine feste Version gepinnt und per Hash abgesichert. -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/dist/umd/supabase.js"
+        integrity="sha384-TcHRA3zBbn+Lexh5n+Oil4guNPOS3rjNDpGRAN46u/s/mB2IZ50ceC6TYDU2yvgK"
+        crossorigin="anonymous"></script>
+<script>
+(function () {
+  "use strict";
+
+  // Nur den öffentlichen anon/publishable Key eintragen, niemals den service_role Key.
+  const SUPABASE_URL = "SUPABASE_URL";
+  const SUPABASE_ANON_KEY = "SUPABASE_ANON_KEY";
+  const EMAIL_DOMAIN = "intern.local";
+
+  // Arbeitszeitmodell: 9 Stunden täglich inkl. 30 Minuten unbezahlter Pause, Freitag frei.
+  const SHIFT_MINUTES = 540;
+  const BREAK_MINUTES = 30;
+  const PAID_MINUTES_PER_DAY = SHIFT_MINUTES - BREAK_MINUTES;
+  const DAY_OFF = 5; // 0 = Sonntag, 5 = Freitag
+  const CURRENCY = "EUR";
+  const TIME_ZONE = "Europe/Berlin"; // Muss zu zeiten_jetzt() in schema.sql passen.
+  const LOCALE = "ar-u-nu-latn"; // Arabisch mit denselben Ziffern 0-9 wie der Ziffernblock.
+
+  const TEXT = {
+    config: "لم يتم ضبط إعدادات الاتصال بعد. يرجى التواصل مع المسؤول.",
+    library: "تعذّر تحميل التطبيق. تحقق من اتصالك بالإنترنت ثم أعد تحميل الصفحة.",
+    usernameEmpty: "يرجى إدخال اسم المستخدم.",
+    usernameLatin: "يجب كتابة اسم المستخدم بأحرف لاتينية، مثل ahmed.",
+    pinLength: "يجب أن يتكون الرمز السري من 6 أرقام.",
+    badLogin: "اسم المستخدم أو الرمز السري غير صحيح.",
+    tooMany: "محاولات كثيرة جدًا. يرجى الانتظار قليلًا ثم المحاولة مرة أخرى.",
+    network: "تعذّر الاتصال بالخادم. تحقق من اتصالك بالإنترنت ثم حاول مرة أخرى.",
+    unexpected: "حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.",
+    signingIn: "جارٍ تسجيل الدخول…",
+    signIn: "تسجيل الدخول",
+    loading: "جارٍ التحميل…",
+    clockedIn: "تم تسجيل الحضور.",
+    clockedOut: "تم تسجيل الانصراف.",
+    alreadyIn: "لقد سجّلت حضورك اليوم بالفعل.",
+    noOpenEntry: "لا يوجد تسجيل حضور مفتوح لهذا اليوم.",
+    showPin: "إظهار الرمز السري",
+    hidePin: "إخفاء الرمز السري",
+    greeting: "مرحبًا، ",
+    adminTitle: "لوحة الإدارة",
+    staff: "الموظفون",
+    noStaff: "لا يوجد موظفون بعد.",
+    entries: "سجلات الدوام",
+    noEntries: "لا توجد سجلات في هذا الشهر.",
+    date: "التاريخ",
+    start: "البدء",
+    end: "الانتهاء",
+    monthlySalary: "الراتب الشهري",
+    hours: "ساعات العمل",
+    hoursOf: " من ",
+    hoursUnit: " ساعة",
+    dueSoFar: "المستحق حتى الآن",
+    due: "الراتب المستحق",
+    noSalary: "لم يُحدَّد الراتب بعد",
+    missingEnd: "أيام بدون تسجيل انصراف ولا تُحتسب ضمن ساعات العمل: ",
+    salaryLabel: "الراتب الشهري (يورو)",
+    save: "حفظ",
+    saved: "تم حفظ الراتب.",
+    salaryInvalid: "يرجى إدخال مبلغ صحيح."
+  };
+
+  const $ = (id) => document.getElementById(id);
+  const el = (tag, props = {}, ...kids) => {
+    const node = Object.assign(document.createElement(tag), props);
+    node.append(...kids);
+    return node;
+  };
+
+  let db = null;
+  let currentUserId = null;
+  let month = null;
+  let loadSeq = 0; // Verwirft Antworten, die erst nach Abmelden oder Monatswechsel eintreffen.
+  let loggingOut = null;
+
+  // ---------- Datum und Gehalt ----------
+  const berlinNow = (options) =>
+    new Intl.DateTimeFormat("en-CA", { timeZone: TIME_ZONE, ...options }).format(new Date());
+  const currentMonth = () => berlinNow({ year: "numeric", month: "2-digit" });
+  const today = () => berlinNow({ year: "numeric", month: "2-digit", day: "2-digit" });
+
+  function shiftMonth(value, delta) {
+    const [year, mon] = value.split("-").map(Number);
+    return new Date(Date.UTC(year, mon - 1 + delta, 1)).toISOString().slice(0, 7);
+  }
+
+  function targetMinutes(value) {
+    const [year, mon] = value.split("-").map(Number);
+    const days = new Date(Date.UTC(year, mon, 0)).getUTCDate();
+    let workdays = 0;
+    for (let day = 1; day <= days; day++) {
+      if (new Date(Date.UTC(year, mon - 1, day)).getUTCDay() !== DAY_OFF) workdays++;
+    }
+    return workdays * PAID_MINUTES_PER_DAY;
+  }
+
+  function toMinutes(time) {
+    const [h, m, s] = time.split(":").map(Number);
+    return h * 60 + m + (s || 0) / 60;
+  }
+
+  function workedMinutes(entry) {
+    if (!entry.ende_zeit) return 0;
+    return Math.max(0, toMinutes(entry.ende_zeit) - toMinutes(entry.start_zeit) - BREAK_MINUTES);
+  }
+
+  // Gehalt ÷ Soll-Stunden × gearbeitete Stunden, Überstunden erhöhen das Gehalt nicht.
+  function payroll(entries, salary, value) {
+    const worked = entries.reduce((sum, entry) => sum + workedMinutes(entry), 0);
+    const target = targetMinutes(value);
+    const due = salary == null ? null : Math.round(Math.min(salary, (salary * worked) / target) * 100) / 100;
+    return { worked, target, due };
+  }
+
+  const formatMoney = (amount) =>
+    new Intl.NumberFormat(LOCALE, { style: "currency", currency: CURRENCY }).format(amount);
+  const formatHours = (minutes) =>
+    (minutes / 60).toLocaleString(LOCALE, { maximumFractionDigits: 2 });
+  const formatDate = (date) =>
+    new Date(date + "T00:00:00Z").toLocaleDateString(LOCALE, {
+      weekday: "long", day: "numeric", month: "long", timeZone: "UTC"
+    });
+  const formatMonth = (value) =>
+    new Date(value + "-01T00:00:00Z").toLocaleDateString(LOCALE, {
+      month: "long", year: "numeric", timeZone: "UTC"
+    });
+  const formatTime = (time) => (time ? time.slice(0, 5) : "—");
+
+  // ---------- Fehlertexte ----------
+  const isNetworkError = (error) =>
+    error instanceof TypeError ||
+    error?.name === "AuthRetryableFetchError" ||
+    /fetch|network/i.test(error?.message || "");
+
+  function authErrorText(error) {
+    if (isNetworkError(error)) return TEXT.network;
+    if (error.status === 429) return TEXT.tooMany;
+    if (error.status === 400) return TEXT.badLogin;
+    return TEXT.unexpected;
+  }
+  const dataErrorText = (error) => (isNetworkError(error) ? TEXT.network : TEXT.unexpected);
+
+  function setMessage(node, text, kind) {
+    node.textContent = text;
+    node.classList.remove("error", "ok", "warn");
+    if (kind) node.classList.add(kind);
+  }
+
+  // ---------- Login ----------
+  function normalizePin(value) {
+    return value
+      .replace(/[٠-٩]/g, (digit) => String(digit.charCodeAt(0) - 0x660))
+      .replace(/\D/g, "")
+      .slice(0, 6);
+  }
+
+  function setPinVisible(visible) {
+    $("pin").type = visible ? "text" : "password";
+    $("eye").setAttribute("aria-pressed", String(visible));
+    $("eye").setAttribute("aria-label", visible ? TEXT.hidePin : TEXT.showPin);
+  }
+
+  async function handleLogin(event) {
+    event.preventDefault();
+    const message = $("login-msg");
+    const username = $("username").value.trim().toLowerCase();
+    const pin = $("pin").value;
+    setMessage(message, "", "error");
+
+    if (!window.supabase) return setMessage(message, TEXT.library, "error");
+    if (!db) return setMessage(message, TEXT.config, "error");
+    if (!username) return setMessage(message, TEXT.usernameEmpty, "error");
+    if (!/^[a-z0-9._-]+$/.test(username)) return setMessage(message, TEXT.usernameLatin, "error");
+    if (pin.length !== 6) return setMessage(message, TEXT.pinLength, "error");
+
+    const button = $("login-btn");
+    button.disabled = true;
+    button.textContent = TEXT.signingIn;
+    try {
+      await loggingOut;
+      const { error } = await db.auth.signInWithPassword({
+        email: `${username}@${EMAIL_DOMAIN}`,
+        password: pin
+      });
+      if (error) {
+        $("pin").value = "";
+        setMessage(message, authErrorText(error), "error");
+      }
+    } catch (error) {
+      $("pin").value = "";
+      setMessage(message, authErrorText(error), "error");
+    } finally {
+      button.disabled = false;
+      button.textContent = TEXT.signIn;
+    }
+  }
+
+  // ---------- Daten laden ----------
+  async function fetchEntries(value) {
+    const from = `${value}-01`;
+    const to = `${shiftMonth(value, 1)}-01`;
+    const pageSize = 1000; // Die API liefert höchstens 1000 Zeilen pro Abfrage.
+    const rows = [];
+    for (let page = 0; ; page++) {
+      const { data, error } = await db
+        .from("zeiten")
+        .select("id, user_id, datum, start_zeit, ende_zeit")
+        .gte("datum", from)
+        .lt("datum", to)
+        .order("datum", { ascending: false })
+        .order("id")
+        .range(page * pageSize, page * pageSize + pageSize - 1);
+      if (error) throw error;
+      rows.push(...data);
+      if (data.length < pageSize) return rows;
+    }
+  }
+
+  async function loadMonth() {
+    const seq = ++loadSeq;
+    const value = month;
+    const status = $("status");
+    status.textContent = TEXT.loading;
+    status.hidden = false;
+    $("retry").hidden = true;
+    $("prev-month").disabled = $("next-month").disabled = true;
+
+    try {
+      const [{ data: staff, error }, entries] = await Promise.all([
+        // RLS liefert normalen Nutzern nur die eigene Zeile, Admins alle.
+        db.from("mitarbeiter").select("user_id, benutzername, monatsgehalt, ist_admin").order("benutzername"),
+        fetchEntries(value)
+      ]);
+      if (error) throw error;
+      if (seq !== loadSeq) return;
+
+      const me = staff.find((row) => row.user_id === currentUserId);
+      status.hidden = true;
+      $("month-label").textContent = formatMonth(value);
+      if (me?.ist_admin) {
+        renderAdmin(staff.filter((row) => !row.ist_admin), entries, value);
+      } else {
+        renderEmployee(me, entries, value);
+      }
+    } catch (error) {
+      if (seq !== loadSeq) return;
+      $("content").replaceChildren();
+      status.textContent = dataErrorText(error);
+      $("retry").hidden = false;
+    } finally {
+      if (seq === loadSeq) {
+        $("prev-month").disabled = false;
+        $("next-month").disabled = month >= currentMonth();
+      }
+    }
+  }
+
+  // ---------- Darstellung ----------
+  function statsBlock(pay, salary, value) {
+    const row = (label, text, className = "") =>
+      el("div", { className }, el("dt", { textContent: label }), el("dd", { textContent: text }));
+    const hours = formatHours(pay.worked) + TEXT.hoursOf + formatHours(pay.target) + TEXT.hoursUnit;
+    const dueLabel = value === currentMonth() ? TEXT.dueSoFar : TEXT.due;
+    return el("dl", { className: "stats" },
+      row(TEXT.monthlySalary, salary == null ? TEXT.noSalary : formatMoney(salary)),
+      row(TEXT.hours, hours),
+      row(dueLabel, pay.due == null ? "—" : formatMoney(pay.due), "due"));
+  }
+
+  function missingEndNote(entries) {
+    const count = entries.filter((entry) => !entry.ende_zeit && entry.datum !== today()).length;
+    return count ? el("p", { className: "msg warn", textContent: TEXT.missingEnd + count }) : "";
+  }
+
+  function entriesTable(entries) {
+    if (!entries.length) return el("p", { className: "empty", textContent: TEXT.noEntries });
+    const head = el("tr", {},
+      ...[TEXT.date, TEXT.start, TEXT.end].map((text) => el("th", { scope: "col", textContent: text })));
+    const rows = entries.map((entry) => el("tr", {},
+      el("td", { textContent: formatDate(entry.datum) }),
+      el("td", {}, el("bdi", { textContent: formatTime(entry.start_zeit) })),
+      el("td", {}, el("bdi", { textContent: formatTime(entry.ende_zeit) }))));
+    return el("table", {}, el("thead", {}, head), el("tbody", {}, ...rows));
+  }
+
+  function renderEmployee(me, entries, value) {
+    const salary = me?.monatsgehalt ?? null;
+    $("stamp").hidden = false;
+    $("app-view").classList.remove("wide");
+    $("content").replaceChildren(
+      statsBlock(payroll(entries, salary, value), salary, value),
+      missingEndNote(entries),
+      el("h2", { textContent: TEXT.entries }),
+      entriesTable(entries));
+  }
+
+  function renderAdmin(staff, entries, value) {
+    $("stamp").hidden = true;
+    $("app-view").classList.add("wide");
+    const cards = staff.map((person) =>
+      staffCard(person, entries.filter((entry) => entry.user_id === person.user_id), value, false));
+    $("content").replaceChildren(
+      el("h2", { textContent: TEXT.staff }),
+      ...(cards.length ? cards : [el("p", { className: "empty", textContent: TEXT.noStaff })]));
+  }
+
+  function staffCard(person, entries, value, open) {
+    const pay = payroll(entries, person.monatsgehalt, value);
+    const inputId = `salary-${person.user_id}`;
+    const input = el("input", {
+      id: inputId, type: "number", min: "0", step: "0.01", inputMode: "decimal",
+      value: person.monatsgehalt ?? ""
+    });
+    const saveMessage = el("p", { className: "msg salary-msg", role: "status" });
+    const saveButton = el("button", { className: "btn btn-primary", type: "submit", textContent: TEXT.save });
+    const form = el("form", { className: "salary-form", noValidate: true },
+      el("div", {}, el("label", { htmlFor: inputId, textContent: TEXT.salaryLabel }), input),
+      saveButton);
+
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const raw = input.value.trim();
+      const amount = raw === "" ? null : Number(raw);
+      if (amount !== null && !(amount >= 0)) return setMessage(saveMessage, TEXT.salaryInvalid, "error");
+
+      const seq = loadSeq;
+      saveButton.disabled = true;
+      setMessage(saveMessage, "");
+      let result;
+      try {
+        result = await db.from("mitarbeiter")
+          .update({ monatsgehalt: amount })
+          .eq("user_id", person.user_id)
+          .select("monatsgehalt");
+      } catch (error) {
+        result = { error };
+      }
+      if (seq !== loadSeq) return;
+      saveButton.disabled = false;
+      if (result.error || result.data.length !== 1) {
+        return setMessage(saveMessage, result.error ? dataErrorText(result.error) : TEXT.unexpected, "error");
+      }
+      const updated = { ...person, monatsgehalt: result.data[0].monatsgehalt };
+      const fresh = staffCard(updated, entries, value, true);
+      card.replaceWith(fresh);
+      setMessage(fresh.querySelector(".salary-msg"), TEXT.saved, "ok");
+    });
+
+    const card = el("details", { open },
+      el("summary", {},
+        el("b", {}, el("bdi", { textContent: person.benutzername })),
+        el("span", { className: "amount", textContent: pay.due == null ? TEXT.noSalary : formatMoney(pay.due) })),
+      el("div", { className: "detail-body" },
+        statsBlock(pay, person.monatsgehalt, value),
+        missingEndNote(entries),
+        form,
+        saveMessage,
+        el("h2", { textContent: TEXT.entries }),
+        entriesTable(entries)));
+    return card;
+  }
+
+  // ---------- Stempeln ----------
+  async function stamp(action) {
+    const seq = loadSeq;
+    const message = $("stamp-msg");
+    $("clock-in").disabled = $("clock-out").disabled = true;
+    setMessage(message, "");
+
+    let outcome;
+    try {
+      outcome = await action();
+    } catch (error) {
+      outcome = { text: dataErrorText(error), kind: "error" };
+    }
+    if (seq !== loadSeq) return;
+
+    $("clock-in").disabled = $("clock-out").disabled = false;
+    setMessage(message, outcome.text, outcome.kind);
+    if (outcome.kind === "ok") {
+      month = currentMonth();
+      loadMonth();
+    }
+  }
+
+  async function clockIn() {
+    const { error } = await db.from("zeiten").insert({ user_id: currentUserId });
+    if (!error) return { text: TEXT.clockedIn, kind: "ok" };
+    if (error.code === "23505") return { text: TEXT.alreadyIn, kind: "error" };
+    return { text: dataErrorText(error), kind: "error" };
+  }
+
+  async function clockOut() {
+    // Der Wert ist nur ein Platzhalter: Der Datenbank-Trigger setzt immer die Serverzeit.
+    const { data, error } = await db.from("zeiten")
+      .update({ ende_zeit: "00:00:00" })
+      .is("ende_zeit", null)
+      .select("id");
+    if (error) return { text: dataErrorText(error), kind: "error" };
+    if (!data.length) return { text: TEXT.noOpenEntry, kind: "error" };
+    return { text: TEXT.clockedOut, kind: "ok" };
+  }
+
+  // ---------- Sitzung ----------
+  function wipeScreen() {
+    loadSeq++;
+    $("username").value = "";
+    $("pin").value = "";
+    setPinVisible(false);
+    setMessage($("login-msg"), "", "error");
+    setMessage($("stamp-msg"), "");
+    $("greeting").replaceChildren();
+    $("content").replaceChildren();
+    $("month-label").textContent = "";
+    $("status").hidden = true;
+    $("retry").hidden = true;
+    $("stamp").hidden = true;
+    $("app-view").classList.remove("wide");
+    $("clock-in").disabled = $("clock-out").disabled = false;
+  }
+
+  function applySession(session) {
+    const userId = session?.user.id ?? null;
+    if (userId === currentUserId) return;
+    wipeScreen();
+    currentUserId = userId;
+    $("login-view").hidden = Boolean(userId);
+    $("app-view").hidden = !userId;
+    if (!userId) return;
+    $("greeting").append(TEXT.greeting, el("bdi", { textContent: session.user.email.split("@")[0] }));
+    month = currentMonth();
+    loadMonth();
+  }
+
+  function logout() {
+    applySession(null); // Bildschirm sofort leeren, noch vor der Serverantwort.
+    loggingOut = db.auth.signOut()
+      .catch(() => {})
+      .then(() => {
+        // Ohne Netz löscht signOut() die Sitzung nicht, deshalb hier immer entfernen.
+        sessionStorage.clear();
+        loggingOut = null;
+      });
+  }
+
+  // ---------- Start ----------
+  $("numpad").addEventListener("click", (event) => {
+    const key = event.target.closest("button")?.dataset.key;
+    if (!key) return;
+    const pin = $("pin");
+    pin.value = key === "del" ? pin.value.slice(0, -1) : normalizePin(pin.value + key);
+  });
+  $("pin").addEventListener("input", (event) => {
+    event.target.value = normalizePin(event.target.value);
+  });
+  $("eye").addEventListener("click", () => setPinVisible($("pin").type === "password"));
+  $("login-form").addEventListener("submit", handleLogin);
+  $("clock-in").addEventListener("click", () => stamp(clockIn));
+  $("clock-out").addEventListener("click", () => stamp(clockOut));
+  $("prev-month").addEventListener("click", () => { month = shiftMonth(month, -1); loadMonth(); });
+  $("next-month").addEventListener("click", () => { month = shiftMonth(month, 1); loadMonth(); });
+  $("retry").addEventListener("click", loadMonth);
+  $("logout").addEventListener("click", logout);
+
+  if (!window.supabase) {
+    setMessage($("login-msg"), TEXT.library, "error");
+  } else if (!/^https?:\/\//.test(SUPABASE_URL)) {
+    setMessage($("login-msg"), TEXT.config, "error");
+  } else {
+    db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      auth: {
+        // Sitzung übersteht ein Neuladen, endet aber mit dem Tab (gemeinsam genutzte Geräte).
+        storage: window.sessionStorage,
+        detectSessionInUrl: false
+      }
+    });
+    db.auth.onAuthStateChange((_event, session) => {
+      // setTimeout: Supabase warnt vor Deadlocks bei Abfragen direkt im Callback.
+      setTimeout(() => { if (!loggingOut) applySession(session); }, 0);
+    });
+  }
+})();
+</script>
+</body>
+</html>
