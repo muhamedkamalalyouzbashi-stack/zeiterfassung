@@ -335,7 +335,12 @@
     inactive: "موقوف",
     usernameLabel: "اسم المستخدم",
     export: "تصدير الشهر (CSV)",
-    csvHeaders: ["الموظف", "ساعات العمل", "الساعات المطلوبة", "الراتب الشهري", "المستحق"]
+    csvHeaders: ["الموظف", "ساعات العمل", "الساعات المطلوبة", "الراتب الشهري", "المستحق"],
+    ownPin: "تغيير رمزي السري",
+    currentPin: "الرمز السري الحالي",
+    wrongCurrentPin: "الرمز السري الحالي غير صحيح.",
+    samePin: "يجب أن يختلف الرمز الجديد عن الرمز الحالي.",
+    ownPinChanged: "تم تغيير رمزك السري."
   };
 
   const $ = (id) => document.getElementById(id);
@@ -347,6 +352,7 @@
 
   let db = null;
   let currentUserId = null;
+  let currentEmail = null;
   let month = null;
   let loadSeq = 0; // Verwirft Antworten, die erst nach Abmelden oder Monatswechsel eintreffen.
   let loggingOut = null;
@@ -718,6 +724,33 @@
     return collapsible("new-staff", [el("b", { textContent: TEXT.addStaff })], form, line);
   }
 
+  function ownPinCard() {
+    const line = noticeLine("own-pin");
+    const current = pinInput();
+    const fresh = pinInput();
+    current.type = fresh.type = "password";
+    const submit = el("button", { className: "btn btn-primary full", type: "submit", textContent: TEXT.save });
+    const form = el("form", { className: "admin-form", noValidate: true },
+      field(TEXT.currentPin, current),
+      field(TEXT.newPinLabel, fresh),
+      submit);
+    form.addEventListener("submit", (event) => {
+      event.preventDefault();
+      const oldPin = validateNewPin(current, line);
+      const newPin = oldPin && validateNewPin(fresh, line);
+      if (!newPin) return;
+      adminAction("own-pin", line, submit, async () => {
+        // Die aktuelle PIN wird geprüft, damit ein offen gelassenes Gerät nicht reicht.
+        const check = await db.auth.signInWithPassword({ email: currentEmail, password: oldPin });
+        if (check.error) return check.error.status === 400 ? TEXT.wrongCurrentPin : authErrorText(check.error);
+        const { error } = await db.auth.updateUser({ password: newPin });
+        if (!error) return null;
+        return error.code === "same_password" ? TEXT.samePin : dataErrorText(error);
+      }, TEXT.ownPinChanged);
+    });
+    return collapsible("own-pin", [el("b", { textContent: TEXT.ownPin })], form, line);
+  }
+
   function exportCsv(staff, entries, absences, value) {
     // Semikolon und Dezimalkomma, damit deutsches Excel die Spalten direkt trennt.
     const number = (amount) => (amount == null ? "" : Number(amount).toFixed(2).replace(".", ","));
@@ -746,7 +779,7 @@
     const exportButton = el("button", { className: "btn btn-outline admin-tools", type: "button", textContent: TEXT.export });
     exportButton.addEventListener("click", () => exportCsv(staff, entries, absences, value));
     $("content").replaceChildren(
-      el("div", { className: "admin-tools" }, addStaffCard()),
+      el("div", { className: "admin-tools" }, addStaffCard(), ownPinCard()),
       exportButton,
       el("h2", { textContent: TEXT.staff }),
       ...(cards.length ? cards : [el("p", { className: "empty", textContent: TEXT.noStaff })]));
@@ -962,6 +995,7 @@
     if (userId === currentUserId) return;
     wipeScreen();
     currentUserId = userId;
+    currentEmail = session?.user.email ?? null;
     $("login-view").hidden = Boolean(userId);
     $("app-view").hidden = !userId;
     if (!userId) return;
