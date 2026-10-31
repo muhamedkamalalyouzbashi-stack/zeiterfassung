@@ -262,7 +262,7 @@
   const BREAK_MINUTES = 30;
   const PAID_MINUTES_PER_DAY = SHIFT_MINUTES - BREAK_MINUTES;
   const DAY_OFF = 5; // 0 = Sonntag, 5 = Freitag
-  const CURRENCY = "USD";
+  const CURRENCY_SIGN = "$";
   const TIME_ZONE = "Europe/Berlin"; // Muss zu zeiten_jetzt() in schema.sql passen.
   const LOCALE = "ar-u-nu-latn"; // Arabisch mit denselben Ziffern 0-9 wie der Ziffernblock.
 
@@ -405,7 +405,8 @@
   }
 
   const formatMoney = (amount) =>
-    new Intl.NumberFormat(LOCALE, { style: "currency", currency: CURRENCY, currencyDisplay: "narrowSymbol" }).format(amount);
+    // Festes Zeichen, weil der arabische Standard "US$" statt "$" anzeigt.
+    CURRENCY_SIGN + new Intl.NumberFormat(LOCALE, { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(amount);
   const formatHours = (minutes) =>
     (minutes / 60).toLocaleString(LOCALE, { maximumFractionDigits: 2 });
   const formatDate = (date) =>
