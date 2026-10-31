@@ -335,7 +335,9 @@
     inactive: "موقوف",
     usernameLabel: "اسم المستخدم",
     export: "تصدير الشهر (CSV)",
-    csvHeaders: ["الموظف", "ساعات العمل", "الساعات المطلوبة", "الراتب الشهري", "المستحق"],
+    csvHeaders: ["الموظف", "الحالة", "ساعات العمل", "الساعات المطلوبة", "الراتب الشهري", "المستحق",
+      "أيام الإجازة", "أيام الإجازة المرضية", "أيام العطل الرسمية", "سبب الغياب والتواريخ"],
+    active: "نشط",
     ownPin: "تغيير رمزي السري",
     currentPin: "الرمز السري الحالي",
     wrongCurrentPin: "الرمز السري الحالي غير صحيح.",
@@ -390,12 +392,14 @@
     return Math.max(0, toMinutes(entry.ende_zeit) - toMinutes(entry.start_zeit) - BREAK_MINUTES);
   }
 
+  const isDayOff = (date) => new Date(date + "T00:00:00Z").getUTCDay() === DAY_OFF;
+
   // Gehalt ÷ Soll-Stunden × gearbeitete Stunden, Überstunden erhöhen das Gehalt nicht.
   // Bezahlte Abwesenheit zählt als voller Arbeitstag, außer am freien Wochentag.
   function payroll(entries, absences, salary, value) {
     const minutesByDay = new Map(entries.map((entry) => [entry.datum, workedMinutes(entry)]));
     absences.forEach((absence) => {
-      if (new Date(absence.datum + "T00:00:00Z").getUTCDay() === DAY_OFF) return;
+      if (isDayOff(absence.datum)) return;
       minutesByDay.set(absence.datum, Math.max(minutesByDay.get(absence.datum) || 0, PAID_MINUTES_PER_DAY));
     });
     const worked = [...minutesByDay.values()].reduce((sum, minutes) => sum + minutes, 0);
@@ -759,8 +763,17 @@
     const lines = staff.map((person) => {
       const own = (row) => row.user_id === person.user_id;
       const pay = payroll(entries.filter(own), absences.filter(own), person.monatsgehalt, value);
-      return [text(person.benutzername), number(pay.worked / 60), number(pay.target / 60),
-        number(person.monatsgehalt), number(pay.due)].join(";");
+      // Wie beim Gehalt zählt Abwesenheit am freien Wochentag nicht mit.
+      const paidAbsences = absences.filter((row) => own(row) && !isDayOff(row.datum));
+      const datesOf = (art) => paidAbsences.filter((row) => row.art === art).map((row) => row.datum).sort();
+      const arts = Object.keys(TEXT.absenceTypes);
+      const reasons = arts
+        .filter((art) => datesOf(art).length)
+        .map((art) => `${TEXT.absenceTypes[art]}: ${datesOf(art).join("، ")}`)
+        .join(" | ");
+      return [text(person.benutzername), person.aktiv ? TEXT.active : TEXT.inactive,
+        number(pay.worked / 60), number(pay.target / 60), number(person.monatsgehalt), number(pay.due),
+        ...arts.map((art) => datesOf(art).length), reasons].join(";");
     });
     const csv = "﻿" + [TEXT.csvHeaders.join(";"), ...lines].join("\r\n");
     const link = el("a", {
