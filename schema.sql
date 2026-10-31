@@ -13,7 +13,17 @@ create table public.mitarbeiter (
   user_id      uuid primary key references auth.users (id) on delete cascade,
   benutzername text not null unique,
   monatsgehalt numeric(10, 2) check (monatsgehalt >= 0),
-  ist_admin    boolean not null default false
+  ist_admin    boolean not null default false,
+  aktiv        boolean not null default true
+);
+
+-- Bezahlte Abwesenheit: zählt wie ein voller Arbeitstag.
+create table public.abwesenheiten (
+  id      bigint generated always as identity primary key,
+  user_id uuid not null references auth.users (id),
+  datum   date not null,
+  art     text not null check (art in ('urlaub', 'krank', 'feiertag')),
+  unique (user_id, datum)
 );
 
 create table public.zeiten (
@@ -82,8 +92,65 @@ for each row
 when (current_user = 'authenticated')
 execute function public.zeiten_ende_setzen();
 
+-- Admin-Korrekturen laufen über diese Funktionen, weil die Spaltenrechte unten
+-- für alle eingeloggten Nutzer gleich gelten. security definer umgeht auch den Stempel-Trigger.
+create function public.admin_zeit_speichern(
+  p_id bigint,
+  p_user_id uuid,
+  p_datum date,
+  p_start time,
+  p_ende time
+)
+returns void
+language plpgsql security definer
+set search_path = ''
+as $$
+begin
+  if not public.ist_admin() then
+    raise exception 'nicht erlaubt' using errcode = '42501';
+  end if;
+  if p_ende is not null and p_ende <= p_start then
+    raise exception 'ende vor start' using errcode = '22023';
+  end if;
+
+  if p_id is null then
+    insert into public.zeiten (user_id, datum, start_zeit, ende_zeit)
+    values (p_user_id, p_datum, p_start, p_ende);
+  else
+    update public.zeiten
+    set datum = p_datum, start_zeit = p_start, ende_zeit = p_ende
+    where id = p_id;
+  end if;
+end
+$$;
+
+create function public.admin_zeit_loeschen(p_id bigint)
+returns void
+language plpgsql security definer
+set search_path = ''
+as $$
+begin
+  if not public.ist_admin() then
+    raise exception 'nicht erlaubt' using errcode = '42501';
+  end if;
+  delete from public.zeiten where id = p_id;
+end
+$$;
+
 -- ============ Rechte: nur diese Spalten dürfen über die API geschrieben werden ============
-revoke all on public.zeiten, public.mitarbeiter from anon, authenticated;
+revoke all on public.zeiten, public.mitarbeiter, public.abwesenheiten from anon, authenticated;
+
+grant select on public.abwesenheiten to authenticated;
+grant insert (user_id, datum, art) on public.abwesenheiten to authenticated;
+grant delete on public.abwesenheiten to authenticated;
+
+-- Für die Edge Function admin-mitarbeiter.
+grant all on public.mitarbeiter to service_role;
+
+revoke execute on function public.admin_zeit_speichern(bigint, uuid, date, time, time) from public, anon;
+revoke execute on function public.admin_zeit_loeschen(bigint) from public, anon;
+grant execute on function public.admin_zeit_speichern(bigint, uuid, date, time, time) to authenticated;
+grant execute on function public.admin_zeit_loeschen(bigint) to authenticated;
 
 grant select on public.zeiten to authenticated;
 grant insert (user_id) on public.zeiten to authenticated;
@@ -98,6 +165,19 @@ revoke execute on function public.zeiten_ende_setzen() from public, anon, authen
 -- ============ Row-Level Security ============
 alter table public.zeiten enable row level security;
 alter table public.mitarbeiter enable row level security;
+alter table public.abwesenheiten enable row level security;
+
+create policy abwesenheiten_select on public.abwesenheiten
+for select to authenticated
+using ((select auth.uid()) = user_id or (select public.ist_admin()));
+
+create policy abwesenheiten_insert on public.abwesenheiten
+for insert to authenticated
+with check ((select public.ist_admin()));
+
+create policy abwesenheiten_delete on public.abwesenheiten
+for delete to authenticated
+using ((select public.ist_admin()));
 
 create policy zeiten_select on public.zeiten
 for select to authenticated

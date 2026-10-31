@@ -158,6 +158,23 @@
   .salary-form input { direction: ltr; text-align: right; }
   .salary-form .btn { width: auto; min-height: 48px; }
   .salary-msg { margin: 10px 0 0; }
+
+  .admin-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; align-items: end; }
+  .admin-form label { margin: 0; font-size: .85rem; }
+  .admin-form input, .admin-form select { height: 44px; }
+  .admin-form input[type="date"], .admin-form input[type="time"], .admin-form .ltr { direction: ltr; text-align: right; }
+  .admin-form .btn { min-height: 44px; }
+  .admin-form .full { grid-column: 1 / -1; }
+  select { width: 100%; padding: 0 10px; border: 1px solid var(--line); border-radius: 12px; background: #fff; font: inherit; color: inherit; }
+  .check { display: flex; align-items: center; gap: 8px; font-weight: 500; }
+  .check input { width: 20px; height: 20px; flex: none; }
+  .badge { margin-inline-start: 8px; padding: 1px 8px; border-radius: 999px; background: var(--error-bg); color: var(--error-text); font-size: .75rem; font-weight: 600; }
+  .mini { min-width: 34px; height: 34px; padding: 0 6px; border: 0; border-radius: 8px; background: var(--key); font-size: .85rem; }
+  .mini.armed { background: var(--danger); color: #fff; }
+  .actions { display: flex; gap: 4px; justify-content: flex-end; }
+  td.actions-cell, th.actions-cell { width: 76px; }
+  .absence { color: var(--muted); font-weight: 600; }
+  .admin-tools { margin-top: 12px; }
 </style>
 </head>
 <body>
@@ -236,8 +253,8 @@
   "use strict";
 
   // Nur den öffentlichen anon/publishable Key eintragen, niemals den service_role Key.
-  const SUPABASE_URL = "SUPABASE_URL";
-  const SUPABASE_ANON_KEY = "SUPABASE_ANON_KEY";
+  const SUPABASE_URL = "https://gubbmnorrkqcqqwnygmp.supabase.co";
+  const SUPABASE_ANON_KEY = "sb_publishable_zPlZEyymWl-qPsS9hgzZrw_0JNTuLcf";
   const EMAIL_DOMAIN = "intern.local";
 
   // Arbeitszeitmodell: 9 Stunden täglich inkl. 30 Minuten unbezahlter Pause, Freitag frei.
@@ -288,7 +305,37 @@
     salaryLabel: "الراتب الشهري (يورو)",
     save: "حفظ",
     saved: "تم حفظ الراتب.",
-    salaryInvalid: "يرجى إدخال مبلغ صحيح."
+    salaryInvalid: "يرجى إدخال مبلغ صحيح.",
+    absenceTypes: { urlaub: "إجازة", krank: "إجازة مرضية", feiertag: "عطلة رسمية" },
+    addEntry: "إضافة سجل دوام",
+    editEntry: "تعديل سجل الدوام",
+    addAbsence: "إضافة غياب مدفوع",
+    absenceType: "النوع",
+    allStaff: "لجميع الموظفين",
+    add: "إضافة",
+    cancel: "إلغاء",
+    edit: "تعديل",
+    remove: "حذف",
+    confirmRemove: "تأكيد",
+    savedOk: "تم الحفظ.",
+    removedOk: "تم الحذف.",
+    fillFields: "يرجى تعبئة الحقول المطلوبة.",
+    endBeforeStart: "يجب أن يكون وقت الانتهاء بعد وقت البدء.",
+    dayTaken: "يوجد سجل لهذا اليوم بالفعل.",
+    addStaff: "إضافة موظف جديد",
+    newPinLabel: "رمز سري جديد (6 أرقام)",
+    staffCreated: "تم إنشاء حساب الموظف.",
+    usernameTaken: "اسم المستخدم هذا مستخدم بالفعل.",
+    changePin: "تغيير الرمز السري",
+    pinChanged: "تم تغيير الرمز السري.",
+    deactivate: "إيقاف الحساب",
+    activate: "تفعيل الحساب",
+    deactivated: "تم إيقاف الحساب.",
+    activated: "تم تفعيل الحساب.",
+    inactive: "موقوف",
+    usernameLabel: "اسم المستخدم",
+    export: "تصدير الشهر (CSV)",
+    csvHeaders: ["الموظف", "ساعات العمل", "الساعات المطلوبة", "الراتب الشهري", "المستحق"]
   };
 
   const $ = (id) => document.getElementById(id);
@@ -303,6 +350,8 @@
   let month = null;
   let loadSeq = 0; // Verwirft Antworten, die erst nach Abmelden oder Monatswechsel eintreffen.
   let loggingOut = null;
+  const openCards = new Set(); // Aufgeklappte Mitarbeiter bleiben nach dem Neuladen offen.
+  const notices = new Map(); // Meldungen, die das Neuladen nach einer Admin-Aktion überstehen.
 
   // ---------- Datum und Gehalt ----------
   const berlinNow = (options) =>
@@ -336,8 +385,14 @@
   }
 
   // Gehalt ÷ Soll-Stunden × gearbeitete Stunden, Überstunden erhöhen das Gehalt nicht.
-  function payroll(entries, salary, value) {
-    const worked = entries.reduce((sum, entry) => sum + workedMinutes(entry), 0);
+  // Bezahlte Abwesenheit zählt als voller Arbeitstag, außer am freien Wochentag.
+  function payroll(entries, absences, salary, value) {
+    const minutesByDay = new Map(entries.map((entry) => [entry.datum, workedMinutes(entry)]));
+    absences.forEach((absence) => {
+      if (new Date(absence.datum + "T00:00:00Z").getUTCDay() === DAY_OFF) return;
+      minutesByDay.set(absence.datum, Math.max(minutesByDay.get(absence.datum) || 0, PAID_MINUTES_PER_DAY));
+    });
+    const worked = [...minutesByDay.values()].reduce((sum, minutes) => sum + minutes, 0);
     const target = targetMinutes(value);
     const due = salary == null ? null : Math.round(Math.min(salary, (salary * worked) / target) * 100) / 100;
     return { worked, target, due };
@@ -350,6 +405,10 @@
   const formatDate = (date) =>
     new Date(date + "T00:00:00Z").toLocaleDateString(LOCALE, {
       weekday: "long", day: "numeric", month: "long", timeZone: "UTC"
+    });
+  const formatDateShort = (date) =>
+    new Date(date + "T00:00:00Z").toLocaleDateString(LOCALE, {
+      weekday: "short", day: "numeric", timeZone: "UTC"
     });
   const formatMonth = (value) =>
     new Date(value + "-01T00:00:00Z").toLocaleDateString(LOCALE, {
@@ -427,15 +486,15 @@
   }
 
   // ---------- Daten laden ----------
-  async function fetchEntries(value) {
+  async function fetchMonth(table, columns, value) {
     const from = `${value}-01`;
     const to = `${shiftMonth(value, 1)}-01`;
     const pageSize = 1000; // Die API liefert höchstens 1000 Zeilen pro Abfrage.
     const rows = [];
     for (let page = 0; ; page++) {
       const { data, error } = await db
-        .from("zeiten")
-        .select("id, user_id, datum, start_zeit, ende_zeit")
+        .from(table)
+        .select(columns)
         .gte("datum", from)
         .lt("datum", to)
         .order("datum", { ascending: false })
@@ -457,10 +516,11 @@
     $("prev-month").disabled = $("next-month").disabled = true;
 
     try {
-      const [{ data: staff, error }, entries] = await Promise.all([
+      const [{ data: staff, error }, entries, absences] = await Promise.all([
         // RLS liefert normalen Nutzern nur die eigene Zeile, Admins alle.
-        db.from("mitarbeiter").select("user_id, benutzername, monatsgehalt, ist_admin").order("benutzername"),
-        fetchEntries(value)
+        db.from("mitarbeiter").select("user_id, benutzername, monatsgehalt, ist_admin, aktiv").order("benutzername"),
+        fetchMonth("zeiten", "id, user_id, datum, start_zeit, ende_zeit", value),
+        fetchMonth("abwesenheiten", "id, user_id, datum, art", value)
       ]);
       if (error) throw error;
       if (seq !== loadSeq) return;
@@ -469,9 +529,9 @@
       status.hidden = true;
       $("month-label").textContent = formatMonth(value);
       if (me?.ist_admin) {
-        renderAdmin(staff.filter((row) => !row.ist_admin), entries, value);
+        renderAdmin(staff.filter((row) => !row.ist_admin), entries, absences, value);
       } else {
-        renderEmployee(me, entries, value);
+        renderEmployee(me, entries, absences, value);
       }
     } catch (error) {
       if (seq !== loadSeq) return;
@@ -503,92 +563,337 @@
     return count ? el("p", { className: "msg warn", textContent: TEXT.missingEnd + count }) : "";
   }
 
-  function entriesTable(entries) {
-    if (!entries.length) return el("p", { className: "empty", textContent: TEXT.noEntries });
-    const head = el("tr", {},
-      ...[TEXT.date, TEXT.start, TEXT.end].map((text) => el("th", { scope: "col", textContent: text })));
-    const rows = entries.map((entry) => el("tr", {},
-      el("td", { textContent: formatDate(entry.datum) }),
-      el("td", {}, el("bdi", { textContent: formatTime(entry.start_zeit) })),
-      el("td", {}, el("bdi", { textContent: formatTime(entry.ende_zeit) }))));
-    return el("table", {}, el("thead", {}, head), el("tbody", {}, ...rows));
+  function entriesTable(entries, absences, admin) {
+    const rows = [
+      ...entries.map((entry) => ({ date: entry.datum, entry })),
+      ...absences.map((absence) => ({ date: absence.datum, absence }))
+    ].sort((a, b) => b.date.localeCompare(a.date));
+    if (!rows.length) return el("p", { className: "empty", textContent: TEXT.noEntries });
+
+    const headings = [TEXT.date, TEXT.start, TEXT.end].map((text) => el("th", { scope: "col", textContent: text }));
+    if (admin) headings.push(el("th", { className: "actions-cell" }));
+    const body = rows.map(({ date, entry, absence }) => {
+      const cells = [el("td", { textContent: admin ? formatDateShort(date) : formatDate(date) })];
+      if (entry) {
+        cells.push(
+          el("td", {}, el("bdi", { textContent: formatTime(entry.start_zeit) })),
+          el("td", {}, el("bdi", { textContent: formatTime(entry.ende_zeit) })));
+      } else {
+        cells.push(el("td", { colSpan: 2, className: "absence", textContent: TEXT.absenceTypes[absence.art] }));
+      }
+      if (admin) {
+        cells.push(el("td", { className: "actions-cell" }, el("div", { className: "actions" },
+          ...(entry ? [editButton(() => admin.edit(entry))] : []),
+          removeButton((button) => admin.remove(button, entry, absence)))));
+      }
+      return el("tr", {}, ...cells);
+    });
+    return el("table", {}, el("thead", {}, el("tr", {}, ...headings)), el("tbody", {}, ...body));
   }
 
-  function renderEmployee(me, entries, value) {
+  function renderEmployee(me, entries, absences, value) {
     const salary = me?.monatsgehalt ?? null;
     $("stamp").hidden = false;
     $("app-view").classList.remove("wide");
     $("content").replaceChildren(
-      statsBlock(payroll(entries, salary, value), salary, value),
+      statsBlock(payroll(entries, absences, salary, value), salary, value),
       missingEndNote(entries),
       el("h2", { textContent: TEXT.entries }),
-      entriesTable(entries));
+      entriesTable(entries, absences));
   }
 
-  function renderAdmin(staff, entries, value) {
+  // ---------- Admin ----------
+  function editButton(onClick) {
+    const button = el("button", { className: "mini", type: "button", textContent: "✎" });
+    button.setAttribute("aria-label", TEXT.edit);
+    button.addEventListener("click", onClick);
+    return button;
+  }
+
+  // Erster Klick fragt nach, zweiter löscht. Browser-Dialoge sind in dieser App tabu.
+  function removeButton(onConfirm) {
+    const button = el("button", { className: "mini", type: "button", textContent: "✕" });
+    button.setAttribute("aria-label", TEXT.remove);
+    button.addEventListener("click", () => {
+      if (button.classList.contains("armed")) return onConfirm(button);
+      button.classList.add("armed");
+      button.textContent = TEXT.confirmRemove;
+    });
+    button.addEventListener("blur", () => {
+      button.classList.remove("armed");
+      button.textContent = "✕";
+    });
+    return button;
+  }
+
+  const field = (text, input, className = "") => el("label", { className }, text, input);
+
+  function collapsible(key, summary, ...body) {
+    const details = el("details", { open: openCards.has(key) },
+      el("summary", {}, ...summary),
+      el("div", { className: "detail-body" }, ...body));
+    details.addEventListener("toggle", () => {
+      if (details.open) openCards.add(key); else openCards.delete(key);
+    });
+    return details;
+  }
+
+  function noticeLine(key) {
+    const line = el("p", { className: "msg salary-msg", role: "status" });
+    const notice = notices.get(key);
+    if (notice) {
+      setMessage(line, notice.text, notice.kind);
+      notices.delete(key);
+    }
+    return line;
+  }
+
+  // Die Aktion liefert einen Fehlertext oder null. Nach Erfolg wird der Monat neu geladen.
+  async function adminAction(key, line, button, action, successText) {
+    const seq = loadSeq;
+    button.disabled = true;
+    setMessage(line, "");
+    let errorText;
+    try {
+      errorText = await action();
+    } catch (error) {
+      errorText = dataErrorText(error);
+    }
+    if (seq !== loadSeq) return;
+    button.disabled = false;
+    if (errorText) return setMessage(line, errorText, "error");
+    notices.set(key, { text: successText, kind: "ok" });
+    loadMonth();
+  }
+
+  const saveErrorText = (error) => {
+    if (error.code === "23505") return TEXT.dayTaken;
+    if (error.code === "22023") return TEXT.endBeforeStart;
+    return dataErrorText(error);
+  };
+
+  async function callStaffFunction(body) {
+    const { error } = await db.functions.invoke("admin-mitarbeiter", { body });
+    if (!error) return null;
+    if (error.name === "FunctionsFetchError") return TEXT.network;
+    const code = await error.context?.json().then((reply) => reply.error, () => null);
+    return code === "username_taken" ? TEXT.usernameTaken : TEXT.unexpected;
+  }
+
+  function validateNewPin(input, line) {
+    const pin = normalizePin(input.value);
+    if (pin.length === 6) return pin;
+    setMessage(line, TEXT.pinLength, "error");
+    return null;
+  }
+
+  function pinInput() {
+    const input = el("input", { type: "text", inputMode: "numeric", maxLength: 6, autocomplete: "off", className: "ltr" });
+    input.addEventListener("input", () => { input.value = normalizePin(input.value); });
+    return input;
+  }
+
+  function addStaffCard() {
+    const line = noticeLine("new-staff");
+    const username = el("input", {
+      type: "text", className: "ltr", autocomplete: "off", autocapitalize: "none", spellcheck: false
+    });
+    const pin = pinInput();
+    const submit = el("button", { className: "btn btn-primary full", type: "submit", textContent: TEXT.add });
+    const form = el("form", { className: "admin-form", noValidate: true },
+      field(TEXT.usernameLabel, username),
+      field(TEXT.newPinLabel, pin),
+      submit);
+    form.addEventListener("submit", (event) => {
+      event.preventDefault();
+      const name = username.value.trim().toLowerCase();
+      if (!name) return setMessage(line, TEXT.usernameEmpty, "error");
+      if (!/^[a-z0-9._-]+$/.test(name)) return setMessage(line, TEXT.usernameLatin, "error");
+      const value = validateNewPin(pin, line);
+      if (!value) return;
+      adminAction("new-staff", line, submit,
+        () => callStaffFunction({ action: "anlegen", benutzername: name, pin: value }),
+        TEXT.staffCreated);
+    });
+    return collapsible("new-staff", [el("b", { textContent: TEXT.addStaff })], form, line);
+  }
+
+  function exportCsv(staff, entries, absences, value) {
+    // Semikolon und Dezimalkomma, damit deutsches Excel die Spalten direkt trennt.
+    const number = (amount) => (amount == null ? "" : Number(amount).toFixed(2).replace(".", ","));
+    const text = (cell) => (/^[=+\-@]/.test(cell) ? `'${cell}` : cell); // Keine Formeln in Excel.
+    const lines = staff.map((person) => {
+      const own = (row) => row.user_id === person.user_id;
+      const pay = payroll(entries.filter(own), absences.filter(own), person.monatsgehalt, value);
+      return [text(person.benutzername), number(pay.worked / 60), number(pay.target / 60),
+        number(person.monatsgehalt), number(pay.due)].join(";");
+    });
+    const csv = "﻿" + [TEXT.csvHeaders.join(";"), ...lines].join("\r\n");
+    const link = el("a", {
+      href: URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" })),
+      download: `zeiterfassung-${value}.csv`
+    });
+    link.click();
+    URL.revokeObjectURL(link.href);
+  }
+
+  function renderAdmin(staff, entries, absences, value) {
     $("stamp").hidden = true;
     $("app-view").classList.add("wide");
+    const own = (rows, person) => rows.filter((row) => row.user_id === person.user_id);
     const cards = staff.map((person) =>
-      staffCard(person, entries.filter((entry) => entry.user_id === person.user_id), value, false));
+      staffCard(person, own(entries, person), own(absences, person), value, staff));
+    const exportButton = el("button", { className: "btn btn-outline admin-tools", type: "button", textContent: TEXT.export });
+    exportButton.addEventListener("click", () => exportCsv(staff, entries, absences, value));
     $("content").replaceChildren(
+      el("div", { className: "admin-tools" }, addStaffCard()),
+      exportButton,
       el("h2", { textContent: TEXT.staff }),
       ...(cards.length ? cards : [el("p", { className: "empty", textContent: TEXT.noStaff })]));
   }
 
-  function staffCard(person, entries, value, open) {
-    const pay = payroll(entries, person.monatsgehalt, value);
-    const inputId = `salary-${person.user_id}`;
-    const input = el("input", {
-      id: inputId, type: "number", min: "0", step: "0.01", inputMode: "decimal",
+  function staffCard(person, entries, absences, value, staff) {
+    const key = person.user_id;
+    const pay = payroll(entries, absences, person.monatsgehalt, value);
+    const line = noticeLine(key);
+
+    // Zeiten: dasselbe Formular zum Hinzufügen und Bearbeiten.
+    let editingId = null;
+    const entryTitle = el("h2", { textContent: TEXT.addEntry });
+    const dateInput = el("input", { type: "date" });
+    const startInput = el("input", { type: "time" });
+    const endInput = el("input", { type: "time" });
+    const entrySave = el("button", { className: "btn btn-primary", type: "submit", textContent: TEXT.save });
+    const entryCancel = el("button", { className: "btn btn-outline", type: "button", textContent: TEXT.cancel, hidden: true });
+    const entryForm = el("form", { className: "admin-form", noValidate: true },
+      field(TEXT.date, dateInput, "full"),
+      field(TEXT.start, startInput),
+      field(TEXT.end, endInput),
+      entrySave,
+      entryCancel);
+
+    function setEditing(entry) {
+      editingId = entry ? entry.id : null;
+      dateInput.value = entry ? entry.datum : "";
+      startInput.value = entry ? entry.start_zeit.slice(0, 5) : "";
+      endInput.value = entry?.ende_zeit ? entry.ende_zeit.slice(0, 5) : "";
+      entryTitle.textContent = entry ? TEXT.editEntry : TEXT.addEntry;
+      entryCancel.hidden = !entry;
+      if (entry) entryForm.scrollIntoView({ block: "nearest" });
+    }
+    entryCancel.addEventListener("click", () => setEditing(null));
+    entryForm.addEventListener("submit", (event) => {
+      event.preventDefault();
+      if (!dateInput.value || !startInput.value) return setMessage(line, TEXT.fillFields, "error");
+      adminAction(key, line, entrySave, async () => {
+        const { error } = await db.rpc("admin_zeit_speichern", {
+          p_id: editingId,
+          p_user_id: person.user_id,
+          p_datum: dateInput.value,
+          p_start: startInput.value,
+          p_ende: endInput.value || null
+        });
+        return error ? saveErrorText(error) : null;
+      }, TEXT.savedOk);
+    });
+
+    const table = entriesTable(entries, absences, {
+      edit: setEditing,
+      remove: (button, entry, absence) => adminAction(key, line, button, async () => {
+        const { error } = entry
+          ? await db.rpc("admin_zeit_loeschen", { p_id: entry.id })
+          : await db.from("abwesenheiten").delete().eq("id", absence.id);
+        return error ? dataErrorText(error) : null;
+      }, TEXT.removedOk)
+    });
+
+    // Bezahlte Abwesenheit
+    const absenceDate = el("input", { type: "date" });
+    const absenceType = el("select", {},
+      ...Object.entries(TEXT.absenceTypes).map(([art, label]) => el("option", { value: art, textContent: label })));
+    const absenceAll = el("input", { type: "checkbox" });
+    const absenceSave = el("button", { className: "btn btn-primary full", type: "submit", textContent: TEXT.add });
+    const absenceForm = el("form", { className: "admin-form", noValidate: true },
+      field(TEXT.date, absenceDate),
+      field(TEXT.absenceType, absenceType),
+      field(TEXT.allStaff, absenceAll, "check full"),
+      absenceSave);
+    absenceForm.addEventListener("submit", (event) => {
+      event.preventDefault();
+      if (!absenceDate.value) return setMessage(line, TEXT.fillFields, "error");
+      const targets = absenceAll.checked ? staff.filter((row) => row.aktiv) : [person];
+      const rows = targets.map((row) => ({ user_id: row.user_id, datum: absenceDate.value, art: absenceType.value }));
+      adminAction(key, line, absenceSave, async () => {
+        // Vorhandene Einträge bleiben stehen, etwa Urlaub an einem später eingetragenen Feiertag.
+        const { error } = await db.from("abwesenheiten")
+          .upsert(rows, { onConflict: "user_id,datum", ignoreDuplicates: true });
+        return error ? dataErrorText(error) : null;
+      }, TEXT.savedOk);
+    });
+
+    // Gehalt
+    const salaryInput = el("input", {
+      type: "number", min: "0", step: "0.01", inputMode: "decimal", className: "ltr",
       value: person.monatsgehalt ?? ""
     });
-    const saveMessage = el("p", { className: "msg salary-msg", role: "status" });
-    const saveButton = el("button", { className: "btn btn-primary", type: "submit", textContent: TEXT.save });
-    const form = el("form", { className: "salary-form", noValidate: true },
-      el("div", {}, el("label", { htmlFor: inputId, textContent: TEXT.salaryLabel }), input),
-      saveButton);
-
-    form.addEventListener("submit", async (event) => {
+    const salarySave = el("button", { className: "btn btn-primary", type: "submit", textContent: TEXT.save });
+    const salaryForm = el("form", { className: "admin-form", noValidate: true },
+      field(TEXT.salaryLabel, salaryInput), salarySave);
+    salaryForm.addEventListener("submit", (event) => {
       event.preventDefault();
-      const raw = input.value.trim();
+      const raw = salaryInput.value.trim();
       const amount = raw === "" ? null : Number(raw);
-      if (amount !== null && !(amount >= 0)) return setMessage(saveMessage, TEXT.salaryInvalid, "error");
-
-      const seq = loadSeq;
-      saveButton.disabled = true;
-      setMessage(saveMessage, "");
-      let result;
-      try {
-        result = await db.from("mitarbeiter")
+      if (amount !== null && !(amount >= 0)) return setMessage(line, TEXT.salaryInvalid, "error");
+      adminAction(key, line, salarySave, async () => {
+        const { data, error } = await db.from("mitarbeiter")
           .update({ monatsgehalt: amount })
           .eq("user_id", person.user_id)
-          .select("monatsgehalt");
-      } catch (error) {
-        result = { error };
-      }
-      if (seq !== loadSeq) return;
-      saveButton.disabled = false;
-      if (result.error || result.data.length !== 1) {
-        return setMessage(saveMessage, result.error ? dataErrorText(result.error) : TEXT.unexpected, "error");
-      }
-      const updated = { ...person, monatsgehalt: result.data[0].monatsgehalt };
-      const fresh = staffCard(updated, entries, value, true);
-      card.replaceWith(fresh);
-      setMessage(fresh.querySelector(".salary-msg"), TEXT.saved, "ok");
+          .select("user_id");
+        if (error) return dataErrorText(error);
+        return data.length === 1 ? null : TEXT.unexpected;
+      }, TEXT.saved);
     });
 
-    const card = el("details", { open },
-      el("summary", {},
-        el("b", {}, el("bdi", { textContent: person.benutzername })),
-        el("span", { className: "amount", textContent: pay.due == null ? TEXT.noSalary : formatMoney(pay.due) })),
-      el("div", { className: "detail-body" },
-        statsBlock(pay, person.monatsgehalt, value),
-        missingEndNote(entries),
-        form,
-        saveMessage,
-        el("h2", { textContent: TEXT.entries }),
-        entriesTable(entries)));
-    return card;
+    // Konto
+    const newPin = pinInput();
+    const pinSave = el("button", { className: "btn btn-primary", type: "submit", textContent: TEXT.changePin });
+    const pinForm = el("form", { className: "admin-form", noValidate: true },
+      field(TEXT.newPinLabel, newPin), pinSave);
+    pinForm.addEventListener("submit", (event) => {
+      event.preventDefault();
+      const pin = validateNewPin(newPin, line);
+      if (!pin) return;
+      adminAction(key, line, pinSave,
+        () => callStaffFunction({ action: "pin", user_id: person.user_id, pin }),
+        TEXT.pinChanged);
+    });
+    const toggle = el("button", {
+      className: "btn btn-outline admin-tools", type: "button",
+      textContent: person.aktiv ? TEXT.deactivate : TEXT.activate
+    });
+    toggle.addEventListener("click", () => adminAction(key, line, toggle,
+      () => callStaffFunction({ action: "aktiv", user_id: person.user_id, aktiv: !person.aktiv }),
+      person.aktiv ? TEXT.deactivated : TEXT.activated));
+
+    return collapsible(key, [
+      el("b", {}, el("bdi", { textContent: person.benutzername }),
+        ...(person.aktiv ? [] : [el("span", { className: "badge", textContent: TEXT.inactive })])),
+      el("span", { className: "amount", textContent: pay.due == null ? TEXT.noSalary : formatMoney(pay.due) })
+    ],
+      line,
+      statsBlock(pay, person.monatsgehalt, value),
+      missingEndNote(entries),
+      el("h2", { textContent: TEXT.entries }),
+      table,
+      entryTitle,
+      entryForm,
+      el("h2", { textContent: TEXT.addAbsence }),
+      absenceForm,
+      el("h2", { textContent: TEXT.monthlySalary }),
+      salaryForm,
+      el("h2", { textContent: TEXT.changePin }),
+      pinForm,
+      toggle);
   }
 
   // ---------- Stempeln ----------
@@ -648,6 +953,8 @@
     $("stamp").hidden = true;
     $("app-view").classList.remove("wide");
     $("clock-in").disabled = $("clock-out").disabled = false;
+    openCards.clear();
+    notices.clear();
   }
 
   function applySession(session) {
