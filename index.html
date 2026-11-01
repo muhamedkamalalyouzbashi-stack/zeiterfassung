@@ -411,6 +411,7 @@
     taskPlaceholder: "أضف مهمة جديدة",
     notes: "الملاحظات",
     logins: "سجل الدخول",
+    loginsHint: "يظهر هنا ما وصل من جهاز الموظف فقط. عدم وجود سطر لدخول ما يعني أن الموقع لم يصل، مثلًا إذا أغلق الصفحة قبل الرد.",
     noLogins: "لا يوجد تسجيل دخول في هذا الشهر.",
     openMap: "فتح في خرائط Google",
     accuracy: "الدقة ± ",
@@ -528,9 +529,8 @@
 
   // ---------- Fehlertexte ----------
   const isNetworkError = (error) =>
-    error instanceof TypeError ||
     error?.name === "AuthRetryableFetchError" ||
-    /fetch|network/i.test(error?.message || "");
+    /fetch|network|load failed/i.test(error?.message || "");
 
   function authErrorText(error) {
     if (isNetworkError(error)) return TEXT.network;
@@ -648,9 +648,10 @@
         db.from("mitarbeiter").select("user_id, benutzername, monatsgehalt, ist_admin, aktiv").order("benutzername"),
         fetchMonth("zeiten", "id, user_id, datum, start_zeit, ende_zeit", value),
         fetchMonth("abwesenheiten", "id, user_id, datum, art", value),
-        fetchMonth("notizen", "id, user_id, datum, inhalt, aufgaben", value),
+        // Notizen und Anmeldeorte sind Zusatzfunktionen: Ein Fehler dort darf das Stempeln nicht blockieren.
+        fetchMonth("notizen", "id, user_id, datum, inhalt, aufgaben", value).catch(() => null),
         // RLS liefert Anmeldeorte nur an Admins, alle anderen bekommen eine leere Liste.
-        fetchMonth("anmeldungen", "id, user_id, datum, zeit, status, breite, laenge, genauigkeit", value)
+        fetchMonth("anmeldungen", "id, user_id, datum, zeit, status, breite, laenge, genauigkeit", value).catch(() => [])
       ]);
       if (error) throw error;
       if (seq !== loadSeq) return;
@@ -659,7 +660,7 @@
       status.hidden = true;
       $("month-label").textContent = formatMonth(value);
       if (me?.ist_admin) {
-        renderAdmin(staff.filter((row) => !row.ist_admin), entries, absences, notes, logins, value);
+        renderAdmin(staff.filter((row) => !row.ist_admin), entries, absences, notes || [], logins, value);
       } else {
         renderEmployee(me, entries, absences, notes, value);
       }
@@ -667,6 +668,7 @@
       if (seq !== loadSeq) return;
       $("content").replaceChildren();
       status.textContent = dataErrorText(error);
+      status.hidden = false;
       $("retry").hidden = false;
     } finally {
       if (seq === loadSeq) {
@@ -738,21 +740,26 @@
     const pay = payroll(entries, absences, salary, value);
     $("stamp").hidden = false;
     $("app-view").classList.remove("wide");
-    const earlier = notes.filter((note) => note.datum !== today());
+    const earlier = (notes || []).filter((note) => note.datum !== today());
     $("content").replaceChildren(
       statsBlock(pay, salary, value, false),
       progressBar(pay.percent),
       missingEndNote(entries),
-      ...(value === currentMonth() ? [noteEditor(notes)] : []),
+      // Ohne geladene Notizen kein Editor, sonst würde Speichern die vorhandene Notiz leer überschreiben.
+      ...(notes && value === currentMonth() ? [noteEditor(notes)] : []),
       el("h2", { textContent: TEXT.entries }),
       entriesTable(entries, absences),
       ...(earlier.length ? [el("h2", { textContent: TEXT.notesPrevious }), ...earlier.map(noteView)] : []));
   }
 
   // ---------- Notizen ----------
+  // Die Datenbank prüft die Einträge. Der Filter schützt die Ansicht zusätzlich vor fehlerhaften Zeilen.
+  const validTasks = (tasks) =>
+    (Array.isArray(tasks) ? tasks : []).filter((task) => typeof task?.text === "string");
+
   function noteEditor(notes) {
     const saved = notes.find((note) => note.datum === today());
-    const draft = noteDraft || { inhalt: saved?.inhalt ?? "", aufgaben: saved?.aufgaben ?? [] };
+    const draft = noteDraft || { inhalt: saved?.inhalt ?? "", aufgaben: validTasks(saved?.aufgaben) };
     const touch = () => { noteDraft = draft; };
 
     const line = noticeLine("note");
@@ -822,10 +829,11 @@
   }
 
   function noteView(note) {
+    const tasks = validTasks(note.aufgaben);
     return el("div", { className: "note-view" },
       el("b", { textContent: formatDate(note.datum) }),
       ...(note.inhalt ? [el("p", { textContent: note.inhalt })] : []),
-      ...(note.aufgaben.length ? [el("ul", { className: "checklist" }, ...note.aufgaben.map((task) => el("li", {},
+      ...(tasks.length ? [el("ul", { className: "checklist" }, ...tasks.map((task) => el("li", {},
         el("span", { textContent: `${task.erledigt ? "✓" : "○"} ${task.text}`, className: task.erledigt ? "done" : "" }))))] : []));
   }
 
@@ -1168,6 +1176,7 @@
       el("h2", { textContent: TEXT.entries }),
       table,
       el("h2", { textContent: TEXT.logins }),
+      el("p", { className: "hint", textContent: TEXT.loginsHint }),
       ...(logins.length
         ? [...logins].reverse().map(loginRow)
         : [el("p", { className: "empty", textContent: TEXT.noLogins })]),

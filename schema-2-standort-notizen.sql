@@ -21,9 +21,36 @@ create table public.notizen (
   inhalt   text not null default '' check (length(inhalt) <= 5000),
   aufgaben jsonb not null default '[]' check (
     jsonb_typeof(aufgaben) = 'array' and jsonb_array_length(aufgaben) <= 100
+    -- Mitarbeiter schreiben dieses Feld direkt über die API, die Admin-Ansicht liest es.
+    and not jsonb_path_exists(aufgaben, '$[*] ? (!(
+      @.type() == "object" && @.text.type() == "string" && @.erledigt.type() == "boolean"
+      && @.text like_regex "^.{0,200}$" flag "s"
+    ))')
   ),
   unique (user_id, datum)
 );
+
+-- Begrenzt API-Nutzer, damit niemand die Admin-Ansicht mit Anmeldezeilen überflutet.
+create function public.anmeldungen_begrenzen()
+returns trigger
+language plpgsql security definer
+set search_path = ''
+as $$
+begin
+  if (select count(*) from public.anmeldungen where user_id = new.user_id and datum = new.datum) >= 50 then
+    raise exception 'zu viele Anmeldungen' using errcode = '54000';
+  end if;
+  return new;
+end
+$$;
+
+create trigger anmeldungen_begrenzen
+before insert on public.anmeldungen
+for each row
+when (current_user = 'authenticated')
+execute function public.anmeldungen_begrenzen();
+
+revoke execute on function public.anmeldungen_begrenzen() from public, anon, authenticated;
 
 -- ============ Rechte ============
 revoke all on public.anmeldungen, public.notizen from anon, authenticated;
