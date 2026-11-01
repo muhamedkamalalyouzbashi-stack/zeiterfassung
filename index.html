@@ -416,6 +416,9 @@
     notesHint: "يستطيع المدير رؤية ملاحظاتك وقائمة مهامك.",
     notesPrevious: "ملاحظات هذا الشهر",
     notesSaved: "تم حفظ الملاحظات.",
+    notePlaceholder: "اكتب ملاحظتك هنا",
+    noteEmpty: "اكتب ملاحظة أو مهمة أولًا.",
+    noteBlank: "هذه الملاحظة فارغة.",
     noNotes: "لا توجد ملاحظات في هذا الشهر.",
     taskPlaceholder: "أضف مهمة جديدة",
     notes: "الملاحظات",
@@ -772,7 +775,7 @@
     const touch = () => { noteDraft = draft; };
 
     const line = noticeLine("note");
-    const text = el("textarea", { maxLength: 5000, value: draft.inhalt });
+    const text = el("textarea", { maxLength: 5000, value: draft.inhalt, placeholder: TEXT.notePlaceholder });
     text.setAttribute("aria-label", TEXT.notesToday);
     text.addEventListener("input", () => { draft.inhalt = text.value; touch(); });
 
@@ -818,14 +821,19 @@
     });
 
     const save = el("button", { className: "btn btn-primary", type: "button", textContent: TEXT.save });
-    save.addEventListener("click", () => adminAction("note", line, save, async () => {
-      const { error } = await db.from("notizen").upsert(
-        { user_id: currentUserId, datum: today(), inhalt: draft.inhalt, aufgaben: draft.aufgaben },
-        { onConflict: "user_id,datum" });
-      if (error) return dataErrorText(error);
-      noteDraft = null;
-      return null;
-    }, TEXT.notesSaved));
+    save.addEventListener("click", () => {
+      // Eine getippte, aber nicht hinzugefügte Aufgabe darf beim Speichern nicht verloren gehen.
+      addCurrent();
+      if (!saved && !draft.inhalt.trim() && !draft.aufgaben.length) return setMessage(line, TEXT.noteEmpty, "error");
+      adminAction("note", line, save, async () => {
+        const { error } = await db.from("notizen").upsert(
+          { user_id: currentUserId, datum: today(), inhalt: draft.inhalt, aufgaben: draft.aufgaben },
+          { onConflict: "user_id,datum" });
+        if (error) return dataErrorText(error);
+        noteDraft = null;
+        return null;
+      }, TEXT.notesSaved);
+    });
 
     return el("section", {},
       el("h2", { textContent: TEXT.notesToday }),
@@ -843,7 +851,8 @@
       el("b", { textContent: formatDate(note.datum) }),
       ...(note.inhalt ? [el("p", { textContent: note.inhalt })] : []),
       ...(tasks.length ? [el("ul", { className: "checklist" }, ...tasks.map((task) => el("li", {},
-        el("span", { textContent: `${task.erledigt ? "✓" : "○"} ${task.text}`, className: task.erledigt ? "done" : "" }))))] : []));
+        el("span", { textContent: `${task.erledigt ? "✓" : "○"} ${task.text}`, className: task.erledigt ? "done" : "" }))))] : []),
+      ...(note.inhalt || tasks.length ? [] : [el("p", { className: "hint", textContent: TEXT.noteBlank })]));
   }
 
   // ---------- Admin ----------
