@@ -19,6 +19,11 @@ const reply = (status: number, body: Record<string, unknown>) =>
 
 const validPin = (pin: unknown) => typeof pin === "string" && /^\d{6}$/.test(pin);
 
+const cleanUsername = (value: unknown) => {
+  const username = String(value ?? "").trim().toLowerCase();
+  return /^[a-z0-9._-]+$/.test(username) ? username : null;
+};
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: cors });
   if (req.method !== "POST") return reply(405, { error: "method_not_allowed" });
@@ -40,8 +45,8 @@ Deno.serve(async (req) => {
   const body = await req.json().catch(() => ({}));
 
   if (body.action === "anlegen") {
-    const username = String(body.benutzername ?? "").trim().toLowerCase();
-    if (!/^[a-z0-9._-]+$/.test(username)) return reply(400, { error: "invalid_username" });
+    const username = cleanUsername(body.benutzername);
+    if (!username) return reply(400, { error: "invalid_username" });
     if (!validPin(body.pin)) return reply(400, { error: "invalid_pin" });
 
     const { error } = await admin.auth.admin.createUser({
@@ -57,8 +62,30 @@ Deno.serve(async (req) => {
   // Alle weiteren Aktionen betreffen ein vorhandenes Konto. Admin-Konten bleiben hier tabu,
   // damit sich niemand versehentlich aussperrt.
   const { data: target } = await admin.from("mitarbeiter")
-    .select("ist_admin").eq("user_id", String(body.user_id ?? "")).maybeSingle();
+    .select("ist_admin, benutzername").eq("user_id", String(body.user_id ?? "")).maybeSingle();
   if (!target || target.ist_admin) return reply(400, { error: "invalid_target" });
+
+  if (body.action === "umbenennen") {
+    const username = cleanUsername(body.benutzername);
+    if (!username) return reply(400, { error: "invalid_username" });
+    const { error } = await admin.auth.admin.updateUserById(body.user_id, {
+      email: username + "@" + EMAIL_DOMAIN,
+      email_confirm: true,
+    });
+    if (error?.code === "email_exists") return reply(409, { error: "username_taken" });
+    if (error) return reply(500, { error: "failed" });
+    const { error: nameError } = await admin.from("mitarbeiter")
+      .update({ benutzername: username }).eq("user_id", body.user_id);
+    if (!nameError) return reply(200, { ok: true });
+    // Anmeldename und angezeigter Name müssen gleich bleiben, also die E-Mail zurückdrehen.
+    await admin.auth.admin.updateUserById(body.user_id, {
+      email: target.benutzername + "@" + EMAIL_DOMAIN,
+      email_confirm: true,
+    });
+    return nameError.code === "23505"
+      ? reply(409, { error: "username_taken" })
+      : reply(500, { error: "failed" });
+  }
 
   if (body.action === "pin") {
     if (!validPin(body.pin)) return reply(400, { error: "invalid_pin" });

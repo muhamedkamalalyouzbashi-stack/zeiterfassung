@@ -362,6 +362,15 @@
     activated: "تم تفعيل الحساب.",
     inactive: "موقوف",
     usernameLabel: "اسم المستخدم",
+    renameHint: "يسجّل الموظف دخوله بالاسم الجديد، ويبقى رمزه السري وسجلاته كما هي.",
+    sameName: "الاسم الجديد مطابق للاسم الحالي.",
+    renamed: "تم تغيير الاسم.",
+    deleteStaff: "حذف الموظف",
+    deleteWarning: "يحذف الحساب وكل سجلات الدوام والغياب والملاحظات ومواقع الدخول نهائيًا، ولا يمكن التراجع. لإبقاء السجلات استخدم إيقاف الحساب، أو صدّر ملف CSV لكل شهر تحتاجه قبل الحذف.",
+    deleteConfirmLabel: "اكتب اسم الموظف للتأكيد",
+    deleteConfirmWrong: "الاسم غير مطابق، لذلك لم يُحذف شيء.",
+    deleteForever: "حذف الموظف نهائيًا",
+    staffDeleted: "تم حذف الموظف وكل سجلاته.",
     export: "تصدير الشهر (CSV)",
     csvHeaders: ["الموظف", "الحالة", "ساعات العمل", "الساعات المطلوبة", "الساعات الإضافية", "أجر الإضافي", "الراتب الشهري", "المستحق",
       "أيام الإجازة", "أيام الإجازة المرضية", "أيام العطل الرسمية", "سبب الغياب والتواريخ"],
@@ -386,7 +395,6 @@
       "الوقت كالسيف، إن لم تقطعه قطعك.",
       "لا تؤجل عمل اليوم إلى الغد.",
       "الصبر مفتاح الفرج.",
-      "من سار على الدرب وصل.",
       "يد واحدة لا تصفق.",
       "أول الغيث قطرة.",
       "خير الأمور أوسطها.",
@@ -916,6 +924,13 @@
     return code === "username_taken" ? TEXT.usernameTaken : TEXT.unexpected;
   }
 
+  function validateUsername(input, line) {
+    const name = input.value.trim().toLowerCase();
+    if (!name) return setMessage(line, TEXT.usernameEmpty, "error");
+    if (!/^[a-z0-9._-]+$/.test(name)) return setMessage(line, TEXT.usernameLatin, "error");
+    return name;
+  }
+
   function validateNewPin(input, line) {
     const pin = normalizePin(input.value);
     if (pin.length === 6) return pin;
@@ -942,9 +957,8 @@
       submit);
     form.addEventListener("submit", (event) => {
       event.preventDefault();
-      const name = username.value.trim().toLowerCase();
-      if (!name) return setMessage(line, TEXT.usernameEmpty, "error");
-      if (!/^[a-z0-9._-]+$/.test(name)) return setMessage(line, TEXT.usernameLatin, "error");
+      const name = validateUsername(username, line);
+      if (!name) return;
       const value = validateNewPin(pin, line);
       if (!value) return;
       adminAction("new-staff", line, submit,
@@ -1022,6 +1036,7 @@
       el("div", { className: "admin-tools" }, addStaffCard(), ownPinCard()),
       exportButton,
       el("h2", { textContent: TEXT.staff }),
+      noticeLine("staff-list"),
       ...(cards.length ? cards : [el("p", { className: "empty", textContent: TEXT.noStaff })]));
   }
 
@@ -1146,6 +1161,25 @@
     });
 
     // Konto
+    const nameInput = el("input", {
+      type: "text", className: "ltr", autocomplete: "off", autocapitalize: "none", spellcheck: false,
+      value: person.benutzername
+    });
+    const nameSave = el("button", { className: "btn btn-primary", type: "submit", textContent: TEXT.save });
+    const nameForm = el("form", { className: "admin-form", noValidate: true },
+      field(TEXT.usernameLabel, nameInput), nameSave);
+    // Eigene Meldezeile: Die Zeile oben in der Karte ist hier unten auf dem Handy nicht zu sehen.
+    const nameLine = noticeLine(`${key}-name`);
+    nameForm.addEventListener("submit", (event) => {
+      event.preventDefault();
+      const name = validateUsername(nameInput, nameLine);
+      if (!name) return;
+      if (name === person.benutzername) return setMessage(nameLine, TEXT.sameName, "error");
+      adminAction(`${key}-name`, nameLine, nameSave,
+        () => callStaffFunction({ action: "umbenennen", user_id: person.user_id, benutzername: name }),
+        TEXT.renamed);
+    });
+
     const newPin = pinInput();
     const pinSave = el("button", { className: "btn btn-primary", type: "submit", textContent: TEXT.changePin });
     const pinForm = el("form", { className: "admin-form", noValidate: true },
@@ -1165,6 +1199,25 @@
     toggle.addEventListener("click", () => adminAction(key, line, toggle,
       () => callStaffFunction({ action: "aktiv", user_id: person.user_id, aktiv: !person.aktiv }),
       person.aktiv ? TEXT.deactivated : TEXT.activated));
+
+    // Endgültiges Löschen: Der Name muss abgetippt werden, zwei Klicks wären hier zu wenig.
+    const deleteInput = el("input", {
+      type: "text", className: "ltr", autocomplete: "off", autocapitalize: "none", spellcheck: false
+    });
+    const deleteSubmit = el("button", { className: "btn btn-danger full", type: "submit", textContent: TEXT.deleteForever });
+    const deleteForm = el("form", { className: "admin-form", noValidate: true },
+      field(TEXT.deleteConfirmLabel, deleteInput, "full"), deleteSubmit);
+    const deleteLine = el("p", { className: "msg salary-msg", role: "status" });
+    deleteForm.addEventListener("submit", (event) => {
+      event.preventDefault();
+      if (deleteInput.value.trim().toLowerCase() !== person.benutzername) {
+        return setMessage(deleteLine, TEXT.deleteConfirmWrong, "error");
+      }
+      adminAction("staff-list", deleteLine, deleteSubmit, async () => {
+        const { error } = await db.rpc("admin_mitarbeiter_loeschen", { p_user_id: person.user_id });
+        return error ? dataErrorText(error) : null;
+      }, TEXT.staffDeleted);
+    });
 
     return collapsible(key, [
       el("b", {}, el("bdi", { textContent: person.benutzername }),
@@ -1191,9 +1244,17 @@
       absenceForm,
       el("h2", { textContent: TEXT.monthlySalary }),
       salaryForm,
+      el("h2", { textContent: TEXT.usernameLabel }),
+      el("p", { className: "hint", textContent: TEXT.renameHint }),
+      nameForm,
+      nameLine,
       el("h2", { textContent: TEXT.changePin }),
       pinForm,
-      toggle);
+      toggle,
+      el("h2", { textContent: TEXT.deleteStaff }),
+      el("p", { className: "hint", textContent: TEXT.deleteWarning }),
+      deleteForm,
+      deleteLine);
   }
 
   // ---------- Stempeln ----------
