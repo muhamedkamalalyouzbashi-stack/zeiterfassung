@@ -251,6 +251,7 @@
   <p class="wisdom" id="wisdom"></p>
 
   <section id="stamp" hidden>
+    <p class="msg warn" id="location-hint" role="status"></p>
     <div class="stack">
       <button class="btn btn-primary" id="clock-in" type="button">حضور<small>تسجيل وقت البدء</small></button>
       <button class="btn btn-outline" id="clock-out" type="button">انصراف<small>تسجيل وقت الانتهاء لهذا اليوم</small></button>
@@ -441,8 +442,11 @@
     openMap: "فتح في خرائط Google",
     accuracy: "الدقة ± ",
     meters: " م",
-    locationRefused: "رفض الموظف مشاركة الموقع",
-    locationUnavailable: "الموقع غير متاح"
+    locationRefused: "لم يسمح جهاز الموظف أو متصفحه بمشاركة الموقع",
+    locationUnavailable: "الموقع غير متاح",
+    locationTimeout: "انتهت مهلة تحديد الموقع",
+    locationHintBlocked: "موقعك محظور على هذا الجهاز، لذلك لم يصل إلى المدير. يجب السماح لهذه الصفحة باستخدام الموقع من إعدادات الهاتف أو المتصفح، ثم تسجيل الخروج والدخول من جديد.",
+    locationHintFailed: "تعذّر تحديد موقعك، لذلك لم يصل إلى المدير. يجب تفعيل خدمة الموقع في الهاتف، ثم تسجيل الخروج والدخول من جديد."
   };
 
   const $ = (id) => document.getElementById(id);
@@ -588,16 +592,26 @@
   // Blockiert die Anmeldung nie: Ablehnung oder fehlendes GPS wird nur vermerkt.
   function recordLoginLocation(userId) {
     const save = (row) => db.from("anmeldungen").insert({ user_id: userId, ...row }).then(() => {}, () => {});
-    if (!navigator.geolocation) return save({ status: "nicht_verfuegbar" });
-    navigator.geolocation.getCurrentPosition(
-      ({ coords }) => save({
-        status: "ok",
-        breite: coords.latitude,
-        laenge: coords.longitude,
-        genauigkeit: Math.round(coords.accuracy)
-      }),
-      (error) => save({ status: error.code === error.PERMISSION_DENIED ? "abgelehnt" : "nicht_verfuegbar" }),
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 });
+    const fail = (status, hint) => {
+      save({ status });
+      if (userId === currentUserId) setMessage($("location-hint"), hint, "warn");
+    };
+    if (!navigator.geolocation) return fail("nicht_verfuegbar", TEXT.locationHintFailed);
+    const found = ({ coords }) => save({
+      status: "ok",
+      breite: coords.latitude,
+      laenge: coords.longitude,
+      genauigkeit: Math.round(coords.accuracy)
+    });
+    const failed = (error) => {
+      if (error.code === error.PERMISSION_DENIED) return fail("abgelehnt", TEXT.locationHintBlocked);
+      fail(error.code === error.TIMEOUT ? "zeit_abgelaufen" : "nicht_verfuegbar", TEXT.locationHintFailed);
+    };
+    // In Gebäuden findet GPS oft kein Signal, dann reicht auch der ungenauere Ort über WLAN oder Mobilfunk.
+    navigator.geolocation.getCurrentPosition(found, (error) => {
+      if (error.code === error.PERMISSION_DENIED) return failed(error);
+      navigator.geolocation.getCurrentPosition(found, failed, { enableHighAccuracy: false, timeout: 20000, maximumAge: 300000 });
+    }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
   }
 
   async function handleLogin(event) {
@@ -626,7 +640,8 @@
         $("pin").value = "";
         setMessage(message, authErrorText(error), "error");
       } else {
-        recordLoginLocation(data.user.id);
+        // Erst nach applySession (ebenfalls per setTimeout), sonst löscht wipeScreen den Hinweis wieder.
+        setTimeout(() => recordLoginLocation(data.user.id), 0);
       }
     } catch (error) {
       $("pin").value = "";
@@ -1075,7 +1090,9 @@
         textContent: `${TEXT.openMap} (${TEXT.accuracy}${login.genauigkeit ?? "?"}${TEXT.meters})`
       });
     } else {
-      place = el("span", { textContent: login.status === "abgelehnt" ? TEXT.locationRefused : TEXT.locationUnavailable });
+      place = el("span", {
+        textContent: { abgelehnt: TEXT.locationRefused, zeit_abgelaufen: TEXT.locationTimeout }[login.status] ?? TEXT.locationUnavailable
+      });
     }
     return el("div", { className: "login-row" }, el("span", { textContent: time }), place);
   }
@@ -1328,6 +1345,7 @@
     setPinVisible(false);
     setMessage($("login-msg"), "", "error");
     setMessage($("stamp-msg"), "");
+    setMessage($("location-hint"), "", "warn");
     $("greeting").replaceChildren();
     $("welcome-line").textContent = "";
     $("wisdom").textContent = "";
