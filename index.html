@@ -175,11 +175,33 @@
   td.actions-cell, th.actions-cell { width: 76px; }
   .absence { color: var(--muted); font-weight: 600; }
   .admin-tools { margin-top: 12px; }
+
+  .brand { margin: 0 0 6px; color: var(--primary-dark); font-size: 1.05rem; font-weight: 800; text-align: center; }
+  .welcome { margin: -12px 0 10px; color: var(--muted); text-align: center; }
+  .wisdom { margin: 0 0 18px; padding: 10px 12px; border-radius: 10px; background: var(--bg); font-size: .92rem; text-align: center; }
+  .progress { height: 10px; margin-top: 10px; overflow: hidden; border-radius: 999px; background: var(--line); }
+  .progress div { height: 100%; background: var(--primary); }
+  textarea { display: block; width: 100%; min-height: 96px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: #fff; font: inherit; color: inherit; resize: vertical; }
+  .hint { margin: 4px 0 10px; color: var(--muted); font-size: .82rem; }
+  .checklist { display: grid; gap: 6px; margin: 10px 0; padding: 0; list-style: none; }
+  .checklist li { display: flex; align-items: center; gap: 8px; }
+  .checklist input[type="checkbox"] { flex: none; width: 20px; height: 20px; }
+  .checklist span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+  .checklist .done { color: var(--muted); text-decoration: line-through; }
+  .add-row { display: flex; gap: 8px; margin-bottom: 10px; }
+  .add-row input { flex: 1; min-width: 0; height: 44px; }
+  .add-row .btn { width: auto; min-height: 44px; }
+  .note-view { padding: 10px 0; border-top: 1px solid var(--line); }
+  .note-view b { display: block; font-size: .85rem; color: var(--muted); }
+  .note-view p { margin: 4px 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .login-row { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 12px; padding: 8px 0; border-top: 1px solid var(--line); font-size: .9rem; }
+  .login-row a { color: var(--primary-dark); font-weight: 600; }
 </style>
 </head>
 <body>
 
 <main class="card" id="login-view">
+  <p class="brand" id="company-login"></p>
   <h1>تسجيل الدوام - تسجيل الدخول</h1>
   <form id="login-form" novalidate>
     <p class="msg error" id="login-msg" role="alert"></p>
@@ -217,11 +239,15 @@
     </div>
     <button class="btn btn-primary" id="login-btn" type="submit">تسجيل الدخول</button>
   </form>
+  <p class="footer">عند تسجيل الدخول يطلب التطبيق موقعك، ويراه المدير.</p>
   <p class="footer">مدعوم بحماية Supabase</p>
 </main>
 
 <main class="card" id="app-view" hidden>
+  <p class="brand" id="company-app"></p>
   <h1 id="greeting"></h1>
+  <p class="welcome" id="welcome-line"></p>
+  <p class="wisdom" id="wisdom"></p>
 
   <section id="stamp" hidden>
     <div class="stack">
@@ -257,10 +283,12 @@
   const SUPABASE_ANON_KEY = "sb_publishable_zPlZEyymWl-qPsS9hgzZrw_0JNTuLcf";
   const EMAIL_DOMAIN = "intern.local";
 
-  // Arbeitszeitmodell: 9 Stunden täglich inkl. 30 Minuten unbezahlter Pause, Freitag frei.
-  const SHIFT_MINUTES = 540;
-  const BREAK_MINUTES = 30;
-  const PAID_MINUTES_PER_DAY = SHIFT_MINUTES - BREAK_MINUTES;
+  // Firmenname nur hier ändern.
+  const COMPANY_NAME = "شركتنا";
+
+  // Arbeitszeitmodell: 8 Stunden täglich inkl. Pause, Freitag frei, Überstunden zu 150 %.
+  const WORKDAY_MINUTES = 480;
+  const OVERTIME_FACTOR = 1.5;
   const DAY_OFF = 5; // 0 = Sonntag, 5 = Freitag
   const CURRENCY_SIGN = "$";
   const TIME_ZONE = "Europe/Berlin"; // Muss zu zeiten_jetzt() in schema.sql passen.
@@ -285,7 +313,6 @@
     noOpenEntry: "لا يوجد تسجيل حضور مفتوح لهذا اليوم.",
     showPin: "إظهار الرمز السري",
     hidePin: "إخفاء الرمز السري",
-    greeting: "مرحبًا، ",
     adminTitle: "لوحة الإدارة",
     staff: "الموظفون",
     noStaff: "لا يوجد موظفون بعد.",
@@ -335,14 +362,61 @@
     inactive: "موقوف",
     usernameLabel: "اسم المستخدم",
     export: "تصدير الشهر (CSV)",
-    csvHeaders: ["الموظف", "الحالة", "ساعات العمل", "الساعات المطلوبة", "الراتب الشهري", "المستحق",
+    csvHeaders: ["الموظف", "الحالة", "ساعات العمل", "الساعات المطلوبة", "الساعات الإضافية", "أجر الإضافي", "الراتب الشهري", "المستحق",
       "أيام الإجازة", "أيام الإجازة المرضية", "أيام العطل الرسمية", "سبب الغياب والتواريخ"],
     active: "نشط",
     ownPin: "تغيير رمزي السري",
     currentPin: "الرمز السري الحالي",
     wrongCurrentPin: "الرمز السري الحالي غير صحيح.",
     samePin: "يجب أن يختلف الرمز الجديد عن الرمز الحالي.",
-    ownPinChanged: "تم تغيير رمزك السري."
+    ownPinChanged: "تم تغيير رمزك السري.",
+    morning: "صباح الخير، ",
+    evening: "مساء الخير، ",
+    welcomes: [
+      "سعداء بوجودك معنا اليوم.",
+      "نتمنى لك يومًا موفقًا.",
+      "جهدك يصنع الفرق، شكرًا لك.",
+      "بداية جميلة ليوم جديد.",
+      "كل يوم فرصة لإنجاز جديد.",
+      "أهلًا بك، لنجعله يومًا رائعًا."
+    ],
+    wisdoms: [
+      "من جدّ وجد، ومن زرع حصد.",
+      "الوقت كالسيف، إن لم تقطعه قطعك.",
+      "لا تؤجل عمل اليوم إلى الغد.",
+      "الصبر مفتاح الفرج.",
+      "من سار على الدرب وصل.",
+      "يد واحدة لا تصفق.",
+      "أول الغيث قطرة.",
+      "خير الأمور أوسطها.",
+      "درهم وقاية خير من قنطار علاج.",
+      "العقل السليم في الجسم السليم.",
+      "من طلب العلا سهر الليالي.",
+      "الصدق منجاة.",
+      "رحلة الألف ميل تبدأ بخطوة.",
+      "التجربة أكبر برهان.",
+      "القناعة كنز لا يفنى.",
+      "في التأني السلامة.",
+      "الكلمة الطيبة صدقة.",
+      "اسأل مجرّبًا ولا تسأل طبيبًا."
+    ],
+    progress: "نسبة الإنجاز هذا الشهر",
+    overtimeHours: "الساعات الإضافية",
+    overtimePay: "أجر الساعات الإضافية",
+    notesToday: "ملاحظات اليوم",
+    notesHint: "يستطيع المدير رؤية ملاحظاتك وقائمة مهامك.",
+    notesPrevious: "ملاحظات هذا الشهر",
+    notesSaved: "تم حفظ الملاحظات.",
+    noNotes: "لا توجد ملاحظات في هذا الشهر.",
+    taskPlaceholder: "أضف مهمة جديدة",
+    notes: "الملاحظات",
+    logins: "سجل الدخول",
+    noLogins: "لا يوجد تسجيل دخول في هذا الشهر.",
+    openMap: "فتح في خرائط Google",
+    accuracy: "الدقة ± ",
+    meters: " م",
+    locationRefused: "رفض الموظف مشاركة الموقع",
+    locationUnavailable: "الموقع غير متاح"
   };
 
   const $ = (id) => document.getElementById(id);
@@ -355,6 +429,7 @@
   let db = null;
   let currentUserId = null;
   let currentEmail = null;
+  let noteDraft = null; // Ungespeicherte Notiz übersteht das Neuladen nach dem Stempeln.
   let month = null;
   let loadSeq = 0; // Verwirft Antworten, die erst nach Abmelden oder Monatswechsel eintreffen.
   let loggingOut = null;
@@ -379,7 +454,7 @@
     for (let day = 1; day <= days; day++) {
       if (new Date(Date.UTC(year, mon - 1, day)).getUTCDay() !== DAY_OFF) workdays++;
     }
-    return workdays * PAID_MINUTES_PER_DAY;
+    return workdays * WORKDAY_MINUTES;
   }
 
   function toMinutes(time) {
@@ -389,23 +464,47 @@
 
   function workedMinutes(entry) {
     if (!entry.ende_zeit) return 0;
-    return Math.max(0, toMinutes(entry.ende_zeit) - toMinutes(entry.start_zeit) - BREAK_MINUTES);
+    return Math.max(0, toMinutes(entry.ende_zeit) - toMinutes(entry.start_zeit));
   }
 
   const isDayOff = (date) => new Date(date + "T00:00:00Z").getUTCDay() === DAY_OFF;
 
-  // Gehalt ÷ Soll-Stunden × gearbeitete Stunden, Überstunden erhöhen das Gehalt nicht.
+  // Stundensatz = Gehalt ÷ Soll-Stunden. Jede Stunde über 8 am Tag und jede Stunde am freien
+  // Wochentag ist Überstunde zu 150 %. Damit können reguläre Stunden das Monatssoll nie übersteigen.
   // Bezahlte Abwesenheit zählt als voller Arbeitstag, außer am freien Wochentag.
   function payroll(entries, absences, salary, value) {
+    const paidDays = new Set(absences.map((absence) => absence.datum).filter((date) => !isDayOff(date)));
     const minutesByDay = new Map(entries.map((entry) => [entry.datum, workedMinutes(entry)]));
-    absences.forEach((absence) => {
-      if (isDayOff(absence.datum)) return;
-      minutesByDay.set(absence.datum, Math.max(minutesByDay.get(absence.datum) || 0, PAID_MINUTES_PER_DAY));
+    paidDays.forEach((date) => { if (!minutesByDay.has(date)) minutesByDay.set(date, 0); });
+
+    let regular = 0;
+    let overtime = 0;
+    minutesByDay.forEach((minutes, date) => {
+      if (isDayOff(date)) {
+        overtime += minutes;
+        return;
+      }
+      regular += paidDays.has(date) ? WORKDAY_MINUTES : Math.min(minutes, WORKDAY_MINUTES);
+      overtime += Math.max(0, minutes - WORKDAY_MINUTES);
     });
-    const worked = [...minutesByDay.values()].reduce((sum, minutes) => sum + minutes, 0);
+
     const target = targetMinutes(value);
-    const due = salary == null ? null : Math.round(Math.min(salary, (salary * worked) / target) * 100) / 100;
-    return { worked, target, due };
+    const round = (amount) => Math.round(amount * 100) / 100;
+    const rate = salary == null ? null : salary / target;
+    return {
+      worked: regular + overtime,
+      regular,
+      overtime,
+      target,
+      percent: Math.round((regular / target) * 100),
+      overtimePay: rate == null ? null : round(rate * OVERTIME_FACTOR * overtime),
+      due: rate == null ? null : round(rate * regular + rate * OVERTIME_FACTOR * overtime)
+    };
+  }
+
+  // Wählt pro Kalendertag immer denselben Eintrag aus einer Liste.
+  function dailyIndex(date, length) {
+    return Math.floor(Date.parse(date + "T00:00:00Z") / 86400000) % length;
   }
 
   const formatMoney = (amount) =>
@@ -461,6 +560,21 @@
     $("eye").setAttribute("aria-label", visible ? TEXT.hidePin : TEXT.showPin);
   }
 
+  // Blockiert die Anmeldung nie: Ablehnung oder fehlendes GPS wird nur vermerkt.
+  function recordLoginLocation(userId) {
+    const save = (row) => db.from("anmeldungen").insert({ user_id: userId, ...row }).then(() => {}, () => {});
+    if (!navigator.geolocation) return save({ status: "nicht_verfuegbar" });
+    navigator.geolocation.getCurrentPosition(
+      ({ coords }) => save({
+        status: "ok",
+        breite: coords.latitude,
+        laenge: coords.longitude,
+        genauigkeit: Math.round(coords.accuracy)
+      }),
+      (error) => save({ status: error.code === error.PERMISSION_DENIED ? "abgelehnt" : "nicht_verfuegbar" }),
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 });
+  }
+
   async function handleLogin(event) {
     event.preventDefault();
     const message = $("login-msg");
@@ -479,13 +593,15 @@
     button.textContent = TEXT.signingIn;
     try {
       await loggingOut;
-      const { error } = await db.auth.signInWithPassword({
+      const { data, error } = await db.auth.signInWithPassword({
         email: `${username}@${EMAIL_DOMAIN}`,
         password: pin
       });
       if (error) {
         $("pin").value = "";
         setMessage(message, authErrorText(error), "error");
+      } else {
+        recordLoginLocation(data.user.id);
       }
     } catch (error) {
       $("pin").value = "";
@@ -527,11 +643,14 @@
     $("prev-month").disabled = $("next-month").disabled = true;
 
     try {
-      const [{ data: staff, error }, entries, absences] = await Promise.all([
+      const [{ data: staff, error }, entries, absences, notes, logins] = await Promise.all([
         // RLS liefert normalen Nutzern nur die eigene Zeile, Admins alle.
         db.from("mitarbeiter").select("user_id, benutzername, monatsgehalt, ist_admin, aktiv").order("benutzername"),
         fetchMonth("zeiten", "id, user_id, datum, start_zeit, ende_zeit", value),
-        fetchMonth("abwesenheiten", "id, user_id, datum, art", value)
+        fetchMonth("abwesenheiten", "id, user_id, datum, art", value),
+        fetchMonth("notizen", "id, user_id, datum, inhalt, aufgaben", value),
+        // RLS liefert Anmeldeorte nur an Admins, alle anderen bekommen eine leere Liste.
+        fetchMonth("anmeldungen", "id, user_id, datum, zeit, status, breite, laenge, genauigkeit", value)
       ]);
       if (error) throw error;
       if (seq !== loadSeq) return;
@@ -540,9 +659,9 @@
       status.hidden = true;
       $("month-label").textContent = formatMonth(value);
       if (me?.ist_admin) {
-        renderAdmin(staff.filter((row) => !row.ist_admin), entries, absences, value);
+        renderAdmin(staff.filter((row) => !row.ist_admin), entries, absences, notes, logins, value);
       } else {
-        renderEmployee(me, entries, absences, value);
+        renderEmployee(me, entries, absences, notes, value);
       }
     } catch (error) {
       if (seq !== loadSeq) return;
@@ -558,15 +677,27 @@
   }
 
   // ---------- Darstellung ----------
-  function statsBlock(pay, salary, value) {
+  // Mitarbeiter sehen ihren Fortschritt in Prozent, die Soll-Stunden sieht nur der Admin.
+  function statsBlock(pay, salary, value, admin) {
     const row = (label, text, className = "") =>
       el("div", { className }, el("dt", { textContent: label }), el("dd", { textContent: text }));
-    const hours = formatHours(pay.worked) + TEXT.hoursOf + formatHours(pay.target) + TEXT.hoursUnit;
     const dueLabel = value === currentMonth() ? TEXT.dueSoFar : TEXT.due;
-    return el("dl", { className: "stats" },
+    const rows = [
       row(TEXT.monthlySalary, salary == null ? TEXT.noSalary : formatMoney(salary)),
-      row(TEXT.hours, hours),
-      row(dueLabel, pay.due == null ? "—" : formatMoney(pay.due), "due"));
+      admin
+        ? row(TEXT.hours, formatHours(pay.regular) + TEXT.hoursOf + formatHours(pay.target) + TEXT.hoursUnit)
+        : row(TEXT.progress, `${pay.percent}%`),
+      row(TEXT.overtimeHours, formatHours(pay.overtime))
+    ];
+    if (admin) rows.push(row(TEXT.overtimePay, pay.overtimePay == null ? "—" : formatMoney(pay.overtimePay)));
+    rows.push(row(dueLabel, pay.due == null ? "—" : formatMoney(pay.due), "due"));
+    return el("dl", { className: "stats" }, ...rows);
+  }
+
+  function progressBar(percent) {
+    const bar = el("div");
+    bar.style.width = `${Math.min(100, percent)}%`;
+    return el("div", { className: "progress" }, bar);
   }
 
   function missingEndNote(entries) {
@@ -602,15 +733,100 @@
     return el("table", {}, el("thead", {}, el("tr", {}, ...headings)), el("tbody", {}, ...body));
   }
 
-  function renderEmployee(me, entries, absences, value) {
+  function renderEmployee(me, entries, absences, notes, value) {
     const salary = me?.monatsgehalt ?? null;
+    const pay = payroll(entries, absences, salary, value);
     $("stamp").hidden = false;
     $("app-view").classList.remove("wide");
+    const earlier = notes.filter((note) => note.datum !== today());
     $("content").replaceChildren(
-      statsBlock(payroll(entries, absences, salary, value), salary, value),
+      statsBlock(pay, salary, value, false),
+      progressBar(pay.percent),
       missingEndNote(entries),
+      ...(value === currentMonth() ? [noteEditor(notes)] : []),
       el("h2", { textContent: TEXT.entries }),
-      entriesTable(entries, absences));
+      entriesTable(entries, absences),
+      ...(earlier.length ? [el("h2", { textContent: TEXT.notesPrevious }), ...earlier.map(noteView)] : []));
+  }
+
+  // ---------- Notizen ----------
+  function noteEditor(notes) {
+    const saved = notes.find((note) => note.datum === today());
+    const draft = noteDraft || { inhalt: saved?.inhalt ?? "", aufgaben: saved?.aufgaben ?? [] };
+    const touch = () => { noteDraft = draft; };
+
+    const line = noticeLine("note");
+    const text = el("textarea", { maxLength: 5000, value: draft.inhalt });
+    text.setAttribute("aria-label", TEXT.notesToday);
+    text.addEventListener("input", () => { draft.inhalt = text.value; touch(); });
+
+    const list = el("ul", { className: "checklist" });
+    function renderTasks() {
+      list.replaceChildren(...draft.aufgaben.map((task, index) => {
+        const box = el("input", { type: "checkbox", checked: Boolean(task.erledigt) });
+        const label = el("span", { textContent: task.text, className: task.erledigt ? "done" : "" });
+        box.setAttribute("aria-label", task.text);
+        box.addEventListener("change", () => {
+          task.erledigt = box.checked;
+          touch();
+          renderTasks();
+        });
+        const remove = el("button", { className: "mini", type: "button", textContent: "✕" });
+        remove.setAttribute("aria-label", TEXT.remove);
+        remove.addEventListener("click", () => {
+          draft.aufgaben.splice(index, 1);
+          touch();
+          renderTasks();
+        });
+        return el("li", {}, box, label, remove);
+      }));
+    }
+    renderTasks();
+
+    const newTask = el("input", { type: "text", maxLength: 200, placeholder: TEXT.taskPlaceholder });
+    const addTask = el("button", { className: "btn btn-outline", type: "button", textContent: TEXT.add });
+    const addCurrent = () => {
+      const value = newTask.value.trim();
+      if (!value || draft.aufgaben.length >= 100) return;
+      draft.aufgaben.push({ text: value, erledigt: false });
+      newTask.value = "";
+      touch();
+      renderTasks();
+      newTask.focus();
+    };
+    addTask.addEventListener("click", addCurrent);
+    newTask.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter") return;
+      event.preventDefault();
+      addCurrent();
+    });
+
+    const save = el("button", { className: "btn btn-primary", type: "button", textContent: TEXT.save });
+    save.addEventListener("click", () => adminAction("note", line, save, async () => {
+      const { error } = await db.from("notizen").upsert(
+        { user_id: currentUserId, datum: today(), inhalt: draft.inhalt, aufgaben: draft.aufgaben },
+        { onConflict: "user_id,datum" });
+      if (error) return dataErrorText(error);
+      noteDraft = null;
+      return null;
+    }, TEXT.notesSaved));
+
+    return el("section", {},
+      el("h2", { textContent: TEXT.notesToday }),
+      el("p", { className: "hint", textContent: TEXT.notesHint }),
+      text,
+      list,
+      el("div", { className: "add-row" }, newTask, addTask),
+      save,
+      line);
+  }
+
+  function noteView(note) {
+    return el("div", { className: "note-view" },
+      el("b", { textContent: formatDate(note.datum) }),
+      ...(note.inhalt ? [el("p", { textContent: note.inhalt })] : []),
+      ...(note.aufgaben.length ? [el("ul", { className: "checklist" }, ...note.aufgaben.map((task) => el("li", {},
+        el("span", { textContent: `${task.erledigt ? "✓" : "○"} ${task.text}`, className: task.erledigt ? "done" : "" }))))] : []));
   }
 
   // ---------- Admin ----------
@@ -772,7 +988,8 @@
         .map((art) => `${TEXT.absenceTypes[art]}: ${datesOf(art).join("، ")}`)
         .join(" | ");
       return [text(person.benutzername), person.aktiv ? TEXT.active : TEXT.inactive,
-        number(pay.worked / 60), number(pay.target / 60), number(person.monatsgehalt), number(pay.due),
+        number(pay.worked / 60), number(pay.target / 60), number(pay.overtime / 60), number(pay.overtimePay),
+        number(person.monatsgehalt), number(pay.due),
         ...arts.map((art) => datesOf(art).length), reasons].join(";");
     });
     const csv = "﻿" + [TEXT.csvHeaders.join(";"), ...lines].join("\r\n");
@@ -784,12 +1001,12 @@
     URL.revokeObjectURL(link.href);
   }
 
-  function renderAdmin(staff, entries, absences, value) {
+  function renderAdmin(staff, entries, absences, notes, logins, value) {
     $("stamp").hidden = true;
     $("app-view").classList.add("wide");
     const own = (rows, person) => rows.filter((row) => row.user_id === person.user_id);
     const cards = staff.map((person) =>
-      staffCard(person, own(entries, person), own(absences, person), value, staff));
+      staffCard(person, own(entries, person), own(absences, person), value, staff, own(notes, person), own(logins, person)));
     const exportButton = el("button", { className: "btn btn-outline admin-tools", type: "button", textContent: TEXT.export });
     exportButton.addEventListener("click", () => exportCsv(staff, entries, absences, value));
     $("content").replaceChildren(
@@ -799,7 +1016,25 @@
       ...(cards.length ? cards : [el("p", { className: "empty", textContent: TEXT.noStaff })]));
   }
 
-  function staffCard(person, entries, absences, value, staff) {
+  function loginRow(login) {
+    const time = new Date(login.zeit).toLocaleString(LOCALE, {
+      timeZone: TIME_ZONE, day: "numeric", month: "long", hour: "2-digit", minute: "2-digit", hourCycle: "h23"
+    });
+    let place;
+    if (login.status === "ok") {
+      place = el("a", {
+        href: `https://www.google.com/maps?q=${Number(login.breite)},${Number(login.laenge)}`,
+        target: "_blank",
+        rel: "noopener noreferrer",
+        textContent: `${TEXT.openMap} (${TEXT.accuracy}${login.genauigkeit ?? "?"}${TEXT.meters})`
+      });
+    } else {
+      place = el("span", { textContent: login.status === "abgelehnt" ? TEXT.locationRefused : TEXT.locationUnavailable });
+    }
+    return el("div", { className: "login-row" }, el("span", { textContent: time }), place);
+  }
+
+  function staffCard(person, entries, absences, value, staff, notes, logins) {
     const key = person.user_id;
     const pay = payroll(entries, absences, person.monatsgehalt, value);
     const line = noticeLine(key);
@@ -928,10 +1163,18 @@
       el("span", { className: "amount", textContent: pay.due == null ? TEXT.noSalary : formatMoney(pay.due) })
     ],
       line,
-      statsBlock(pay, person.monatsgehalt, value),
+      statsBlock(pay, person.monatsgehalt, value, true),
       missingEndNote(entries),
       el("h2", { textContent: TEXT.entries }),
       table,
+      el("h2", { textContent: TEXT.logins }),
+      ...(logins.length
+        ? [...logins].reverse().map(loginRow)
+        : [el("p", { className: "empty", textContent: TEXT.noLogins })]),
+      el("h2", { textContent: TEXT.notes }),
+      ...(notes.length
+        ? notes.map(noteView)
+        : [el("p", { className: "empty", textContent: TEXT.noNotes })]),
       entryTitle,
       entryForm,
       el("h2", { textContent: TEXT.addAbsence }),
@@ -993,6 +1236,9 @@
     setMessage($("login-msg"), "", "error");
     setMessage($("stamp-msg"), "");
     $("greeting").replaceChildren();
+    $("welcome-line").textContent = "";
+    $("wisdom").textContent = "";
+    noteDraft = null;
     $("content").replaceChildren();
     $("month-label").textContent = "";
     $("status").hidden = true;
@@ -1013,7 +1259,10 @@
     $("login-view").hidden = Boolean(userId);
     $("app-view").hidden = !userId;
     if (!userId) return;
-    $("greeting").append(TEXT.greeting, el("bdi", { textContent: session.user.email.split("@")[0] }));
+    const hour = Number(berlinNow({ hour: "2-digit", hourCycle: "h23" }));
+    $("greeting").append(hour < 12 ? TEXT.morning : TEXT.evening, el("bdi", { textContent: session.user.email.split("@")[0] }));
+    $("welcome-line").textContent = TEXT.welcomes[Math.floor(Math.random() * TEXT.welcomes.length)];
+    $("wisdom").textContent = TEXT.wisdoms[dailyIndex(today(), TEXT.wisdoms.length)];
     month = currentMonth();
     loadMonth();
   }
@@ -1030,6 +1279,9 @@
   }
 
   // ---------- Start ----------
+  document.title = `${COMPANY_NAME} - تسجيل الدوام`;
+  $("company-login").textContent = COMPANY_NAME;
+  $("company-app").textContent = COMPANY_NAME;
   $("numpad").addEventListener("click", (event) => {
     const key = event.target.closest("button")?.dataset.key;
     if (!key) return;
