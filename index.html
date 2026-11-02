@@ -254,7 +254,7 @@
     <p class="msg warn" id="location-hint" role="status"></p>
     <div class="stack">
       <button class="btn btn-primary" id="clock-in" type="button">حضور<small>تسجيل وقت البدء</small></button>
-      <button class="btn btn-outline" id="clock-out" type="button">انصراف<small>تسجيل وقت الانتهاء لهذا اليوم</small></button>
+      <button class="btn btn-outline" id="clock-out" type="button">انصراف<small>تسجيل وقت الانتهاء</small></button>
     </div>
     <p class="msg" id="stamp-msg" role="status"></p>
   </section>
@@ -311,7 +311,7 @@
     loading: "جارٍ التحميل…",
     clockedIn: "تم تسجيل الحضور.",
     clockedOut: "تم تسجيل الانصراف.",
-    alreadyIn: "لقد سجّلت حضورك اليوم بالفعل.",
+    alreadyIn: "لديك تسجيل حضور مفتوح بالفعل. سجّل الانصراف أولًا.",
     noOpenEntry: "لا يوجد تسجيل حضور مفتوح لهذا اليوم.",
     showPin: "إظهار الرمز السري",
     hidePin: "إخفاء الرمز السري",
@@ -350,7 +350,7 @@
     removedOk: "تم الحذف.",
     fillFields: "يرجى تعبئة الحقول المطلوبة.",
     endBeforeStart: "يجب أن يكون وقت الانتهاء بعد وقت البدء.",
-    dayTaken: "يوجد سجل لهذا اليوم بالفعل.",
+    timeOverlap: "يتداخل هذا الوقت مع سجل آخر في اليوم نفسه.",
     addStaff: "إضافة موظف جديد",
     newPinLabel: "رمز سري جديد (6 أرقام)",
     staffCreated: "تم إنشاء حساب الموظف.",
@@ -504,7 +504,8 @@
   // Bezahlte Abwesenheit zählt als voller Arbeitstag, außer am freien Wochentag.
   function payroll(entries, absences, salary, value) {
     const paidDays = new Set(absences.map((absence) => absence.datum).filter((date) => !isDayOff(date)));
-    const minutesByDay = new Map(entries.map((entry) => [entry.datum, workedMinutes(entry)]));
+    const minutesByDay = new Map();
+    entries.forEach((entry) => minutesByDay.set(entry.datum, (minutesByDay.get(entry.datum) || 0) + workedMinutes(entry)));
     paidDays.forEach((date) => { if (!minutesByDay.has(date)) minutesByDay.set(date, 0); });
 
     let regular = 0;
@@ -751,7 +752,7 @@
     const rows = [
       ...entries.map((entry) => ({ date: entry.datum, entry })),
       ...absences.map((absence) => ({ date: absence.datum, absence }))
-    ].sort((a, b) => b.date.localeCompare(a.date));
+    ].sort((a, b) => b.date.localeCompare(a.date) || (a.entry?.start_zeit ?? "").localeCompare(b.entry?.start_zeit ?? ""));
     if (!rows.length) return el("p", { className: "empty", textContent: TEXT.noEntries });
 
     const headings = [TEXT.date, TEXT.start, TEXT.end].map((text) => el("th", { scope: "col", textContent: text }));
@@ -948,7 +949,7 @@
   }
 
   const saveErrorText = (error) => {
-    if (error.code === "23505") return TEXT.dayTaken;
+    if (error.code === "23505") return TEXT.timeOverlap;
     if (error.code === "22023") return TEXT.endBeforeStart;
     return dataErrorText(error);
   };
